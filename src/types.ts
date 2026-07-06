@@ -1,0 +1,32 @@
+import type { Team } from "./config";
+import type { Grid } from "./grid";
+import type { Unit, Building, SupplyField } from "./entities";
+
+export interface Vec {
+  x: number;
+  y: number;
+}
+
+// Interface the entities use to talk back to the game world,
+// keeping entities.ts free of a hard dependency on Game.
+export interface WorldApi {
+  grid: Grid;
+  units: Unit[];
+  buildings: Building[];
+  supplyFields: SupplyField[];
+  spawnProjectile(from: Vec, target: Unit | Building, damage: number, team: Team): void;
+  findNearestEnemy(x: number, y: number, team: Team, withinSight: number): Unit | Building | null;
+  findNearestSupply(x: number, y: number): SupplyField | null;
+  nearestDropOff(x: number, y: number, team: Team): Building | null;
+  addCredits(team: Team, amount: number): void;
+}
+
+export function dist(a: Vec, b: Vec): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+export function dist2(ax: number, ay: number, bx: number, by: number): number {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return dx * dx + dy * dy;
+}
