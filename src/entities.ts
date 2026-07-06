@@ -43,7 +43,7 @@ export class Unit {
   // harvester economy
   carrying = 0;
   gatherTimer = 0;
-  fieldTarget: import("./entities").SupplyField | null = null;
+  fieldTarget: SupplyField | null = null;
 
   constructor(public team: Team, public kind: UnitKind, x: number, y: number) {
     this.def = UNITS[kind];
@@ -92,7 +92,6 @@ export class Unit {
     const tilePath = findPath(world.grid, from.tx, from.ty, to.tx, to.ty);
     this.path = tilePath.map((t) => world.grid.tileCenter(t.x, t.y));
     if (this.path.length > 0) {
-      // replace last waypoint with the exact requested point for precision
       this.path[this.path.length - 1] = { x: wx, y: wy };
     }
   }
@@ -141,7 +140,6 @@ export class Unit {
     const t = this.target;
     if (!t || !t.alive) {
       this.target = null;
-      // resume attack-move if we were on one
       if (this.holdGoal) {
         this.moveTo(world, this.holdGoal.x, this.holdGoal.y, true);
       } else {
@@ -152,18 +150,17 @@ export class Unit {
     const d = dist(this, t);
     const reach = this.def.range + t.radius;
     if (d > reach) {
-      // move closer
       this.face(t);
       if (this.repathCd <= 0) {
         this.computePath(world, t.x, t.y);
         this.repathCd = 0.4;
       }
-      this.stepAlongPath(dt, world);
+      this.stepAlongPath(dt);
     } else {
       this.path = [];
       this.face(t);
       if (this.fireCd <= 0) {
-        world.spawnProjectile({ x: this.x, y: this.y }, t, this.def.damage, this.team);
+        world.spawnProjectile({ x: this.x, y: this.y }, t, this.def.damage, this.team, this.def.splash);
         this.fireCd = 1 / this.def.fireRate;
       }
     }
@@ -181,17 +178,16 @@ export class Unit {
       this.computePath(world, field.x, field.y);
     }
     if (dist(this, field) > TILE * 0.9) {
-      this.stepAlongPath(dt, world);
+      this.stepAlongPath(dt);
       if (this.path.length === 0) this.computePath(world, field.x, field.y);
       return;
     }
-    // at the field: fill up
     this.gatherTimer += dt;
     if (this.gatherTimer >= GATHER_TIME) {
-      const taken = field.take(GATHER_AMOUNT);
-      this.carrying = taken;
+      this.carrying = field.take(GATHER_AMOUNT);
       this.gatherTimer = 0;
       this.state = "return";
+      this.path = [];
     }
   }
 
@@ -203,21 +199,21 @@ export class Unit {
     }
     if (dist(this, drop) > drop.radius + TILE) {
       if (this.path.length === 0) this.computePath(world, drop.x, drop.y);
-      this.stepAlongPath(dt, world);
+      this.stepAlongPath(dt);
       return;
     }
     world.addCredits(this.team, this.carrying);
     this.carrying = 0;
-    this.state = "gather"; // go back for more
+    this.state = "gather";
     this.path = [];
   }
 
-  private followPath(dt: number, world: WorldApi) {
-    this.stepAlongPath(dt, world);
+  private followPath(dt: number, _world: WorldApi) {
+    this.stepAlongPath(dt);
     if (this.path.length === 0) this.state = "idle";
   }
 
-  private stepAlongPath(dt: number, _world: WorldApi) {
+  private stepAlongPath(dt: number) {
     if (this.path.length === 0) return;
     const wp = this.path[0];
     const dx = wp.x - this.x;
@@ -239,7 +235,6 @@ export class Unit {
     this.angle = Math.atan2(t.y - this.y, t.x - this.x);
   }
 
-  // soft collision so units don't fully overlap
   private separate(world: WorldApi) {
     for (const o of world.units) {
       if (o === this || !o.alive) continue;
@@ -250,10 +245,8 @@ export class Unit {
       if (d2 > 0 && d2 < minD * minD) {
         const d = Math.sqrt(d2);
         const push = (minD - d) / 2;
-        const nx = dx / d;
-        const ny = dy / d;
-        this.x += nx * push;
-        this.y += ny * push;
+        this.x += (dx / d) * push;
+        this.y += (dy / d) * push;
       }
     }
   }
@@ -268,10 +261,11 @@ export class Building {
   y: number;
   radius: number;
   selected = false;
+  powered = true; // set each tick by the game's power calculation
 
-  // production (command center)
   queue: { kind: UnitKind; timeLeft: number; total: number }[] = [];
   rally: Vec;
+  private fireCd = 0;
 
   constructor(public team: Team, public kind: BuildingKind, public tileX: number, public tileY: number) {
     this.def = BUILDINGS[kind];
@@ -286,6 +280,10 @@ export class Building {
     return this.def.maxHp;
   }
 
+  get functional(): boolean {
+    return this.alive && (!this.def.needsPower || this.powered);
+  }
+
   takeDamage(amount: number) {
     this.hp -= amount;
     if (this.hp <= 0) {
@@ -298,9 +296,21 @@ export class Building {
     this.queue.push({ kind, timeLeft: buildTime, total: buildTime });
   }
 
-  // returns a unit to spawn (kind) when one finishes, else null
-  update(dt: number): UnitKind | null {
+  // Advances production and fires turret weapon.
+  // Returns a finished unit kind to spawn, or null.
+  update(dt: number, world: WorldApi): UnitKind | null {
+    // turret weapon
+    if (this.def.damage > 0 && this.functional) {
+      this.fireCd -= dt;
+      const enemy = world.findNearestEnemy(this.x, this.y, this.team, this.def.range);
+      if (enemy && this.fireCd <= 0) {
+        world.spawnProjectile({ x: this.x, y: this.y - this.radius }, enemy, this.def.damage, this.team, 0);
+        this.fireCd = 1 / this.def.fireRate;
+      }
+    }
+
     if (this.queue.length === 0) return null;
+    if (this.def.needsPower && !this.powered) return null; // stalled, no power
     const head = this.queue[0];
     head.timeLeft -= dt;
     if (head.timeLeft <= 0) {
@@ -346,12 +356,13 @@ export class Projectile {
     public target: Target,
     public damage: number,
     public team: Team,
+    public splash: number,
   ) {
     this.x = from.x;
     this.y = from.y;
   }
 
-  update(dt: number) {
+  update(dt: number, world: WorldApi) {
     if (!this.target.alive) {
       this.alive = false;
       return;
@@ -361,11 +372,31 @@ export class Projectile {
     const d = Math.hypot(dx, dy);
     const step = this.speed * dt;
     if (d <= step + this.target.radius) {
-      this.target.takeDamage(this.damage);
+      this.impact(world);
       this.alive = false;
     } else {
       this.x += (dx / d) * step;
       this.y += (dy / d) * step;
+    }
+  }
+
+  private impact(world: WorldApi) {
+    if (this.splash <= 0) {
+      this.target.takeDamage(this.damage);
+      return;
+    }
+    const r2 = this.splash * this.splash;
+    for (const u of world.units) {
+      if (!u.alive || u.team === this.team) continue;
+      const dx = u.x - this.target.x;
+      const dy = u.y - this.target.y;
+      if (dx * dx + dy * dy <= r2) u.takeDamage(this.damage);
+    }
+    for (const b of world.buildings) {
+      if (!b.alive || b.team === this.team) continue;
+      const dx = b.x - this.target.x;
+      const dy = b.y - this.target.y;
+      if (dx * dx + dy * dy <= r2) b.takeDamage(this.damage * 0.6);
     }
   }
 }

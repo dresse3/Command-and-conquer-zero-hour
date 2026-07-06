@@ -1,43 +1,31 @@
-import { UNITS, type UnitKind } from "./config";
+import { MAP_W, MAP_H, TILE, type BuildEntry } from "./config";
 
 export const HUD_HEIGHT = 96;
-
-export interface HudButton {
-  kind: UnitKind;
-  hotkey: string;
-}
-
-export const HUD_BUTTONS: HudButton[] = [
-  { kind: "ranger", hotkey: "R" },
-  { kind: "raptor", hotkey: "T" },
-  { kind: "harvester", hotkey: "H" },
-];
+export const MINIMAP_SIZE = 176;
+const MINIMAP_MARGIN = 10;
+const WORLD_W = MAP_W * TILE;
+const WORLD_H = MAP_H * TILE;
 
 export interface ButtonRect {
-  btn: HudButton;
+  entry: BuildEntry;
   x: number;
   y: number;
   w: number;
   h: number;
 }
 
-export function buttonRects(canvasW: number, canvasH: number): ButtonRect[] {
-  const bw = 108;
+export function buttonRects(entries: BuildEntry[], canvasH: number): ButtonRect[] {
+  const bw = 104;
   const bh = 64;
-  const gap = 10;
-  const startX = 20;
+  const gap = 8;
+  const startX = 16;
   const y = canvasH - HUD_HEIGHT + (HUD_HEIGHT - bh) / 2;
-  const rects: ButtonRect[] = [];
-  HUD_BUTTONS.forEach((btn, i) => {
-    rects.push({ btn, x: startX + i * (bw + gap), y, w: bw, h: bh });
-  });
-  void canvasW;
-  return rects;
+  return entries.map((entry, i) => ({ entry, x: startX + i * (bw + gap), y, w: bw, h: bh }));
 }
 
-export function hudHitTest(px: number, py: number, canvasW: number, canvasH: number): UnitKind | null {
-  for (const r of buttonRects(canvasW, canvasH)) {
-    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return r.btn.kind;
+export function hudHitTest(px: number, py: number, entries: BuildEntry[], canvasH: number): BuildEntry | null {
+  for (const r of buttonRects(entries, canvasH)) {
+    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return r.entry;
   }
   return null;
 }
@@ -46,6 +34,29 @@ export function isInHud(py: number, canvasH: number): boolean {
   return py >= canvasH - HUD_HEIGHT;
 }
 
-export function costOf(kind: UnitKind): number {
-  return UNITS[kind].cost;
+// ---- minimap ----
+export function minimapRect(canvasW: number, canvasH: number) {
+  return {
+    x: canvasW - MINIMAP_SIZE - MINIMAP_MARGIN,
+    y: canvasH - MINIMAP_SIZE - MINIMAP_MARGIN,
+    w: MINIMAP_SIZE,
+    h: MINIMAP_SIZE,
+  };
+}
+
+export function isInMinimap(px: number, py: number, canvasW: number, canvasH: number): boolean {
+  const r = minimapRect(canvasW, canvasH);
+  return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+}
+
+export function minimapToWorld(px: number, py: number, canvasW: number, canvasH: number): { x: number; y: number } {
+  const r = minimapRect(canvasW, canvasH);
+  const fx = (px - r.x) / r.w;
+  const fy = (py - r.y) / r.h;
+  return { x: fx * WORLD_W, y: fy * WORLD_H };
+}
+
+export function worldToMinimap(wx: number, wy: number, canvasW: number, canvasH: number): { x: number; y: number } {
+  const r = minimapRect(canvasW, canvasH);
+  return { x: r.x + (wx / WORLD_W) * r.w, y: r.y + (wy / WORLD_H) * r.h };
 }

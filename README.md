@@ -26,25 +26,32 @@ npm run preview
 
 | Input | Handling |
 |-------|----------|
-| **WASD / piletaster / skærmkant** | Panorér kameraet |
+| **Piletaster / skærmkant** | Panorér kameraet |
 | **Musehjul** | Zoom ind/ud |
+| **Klik på minimap** | Hop kameraet · (højre-klik = kommandér dertil) |
 | **Venstre-klik + træk** | Marker enheder (box-select) |
-| **Venstre-klik** | Marker enkelt enhed |
+| **Venstre-klik på bygning** | Vælg bygning → dens byg-menu vises nederst |
 | **Shift + klik** | Tilføj til markering |
 | **Højre-klik** | Flyt · angrib fjende · send harvester til supply |
-| **Esc** | Fjern markering |
-| **R / T / H** | Byg Ranger · Raptor Tank · Harvester |
+| **A** derefter klik | Attack-move til punkt |
+| **Ctrl + 1-9** | Gem kontrolgruppe · **1-9** vælg gruppe |
+| **Byg-hotkeys** (når bygning valgt) | fx R/E = infanteri, T/Y = køretøjer, 1-5 = strukturer |
+| **Shift under placering** | Bliv i placeringstilstand (byg flere) |
+| **Esc** | Annullér placering / fjern markering |
 
-## Hvad er implementeret (v0.1)
+## Hvad er implementeret (v0.2)
 
 - **Tile-baseret kort** (60×60) med terræn og klippeforhindringer
 - **A\* pathfinding** (8-retninger, undviger forhindringer og bygninger)
-- **Kamera** med pan, edge-scroll og zoom
-- **Enheder:** Ranger (infanteri), Raptor Tank, Harvester
-- **Kamp:** automatisk mål-opsamling, projektiler, health bars, død
-- **Økonomi:** harvestere samler fra supply-felter og afleverer i Command Center
-- **Produktion:** byg-kø med progress, rally point
-- **Fjende-AI:** bygger økonomi + hær og angriber din base i bølger
+- **Kamera** med pan, edge-scroll, zoom og **minimap** med klik-navigation
+- **Base-building:** placér Power Plant, Barracks, War Factory, Supply Depot og Gun Turret med ghost-preview
+- **Strøm-system:** bygninger kræver strøm; brownout slukker produktion og forsvar
+- **Produktionshierarki:** Barracks → infanteri, War Factory → køretøjer, Command Center → strukturer
+- **Enheder:** Ranger, Rocketeer (anti-tank), Raptor Tank, Artillery (splash), Harvester
+- **Kamp:** auto-targeting, projektiler, splash-skade, forsvarstårne, health bars
+- **Økonomi:** harvestere samler fra supply-felter og afleverer i Command Center / Supply Depot
+- **Kommando:** kontrolgrupper (Ctrl+1-9), attack-move (A)
+- **Fjende-AI:** bygger økonomi + hær fra barracks/factory og angriber i bølger
 - **Sejr/nederlag:** ødelæg fjendens Command Center — eller mist din egen
 
 ## Arkitektur
@@ -65,12 +72,14 @@ src/
 
 ## Roadmap (næste skridt)
 
-- [ ] Flere bygningstyper (barracks, war factory, forsvarstårne)
-- [ ] Supply Depot som ekstra afleveringspunkt
-- [ ] Fog of war + minimap
-- [ ] Faktions-asymmetri og "general powers"
+- [x] Flere bygningstyper (barracks, war factory, forsvarstårne)
+- [x] Supply Depot som ekstra afleveringspunkt
+- [x] Minimap med klik-navigation
+- [x] Gruppe-hotkeys (Ctrl+1-9) og attack-move (A)
+- [ ] Fog of war
+- [ ] Faktions-asymmetri og "general powers" / superweapons
 - [ ] Bedre sprite-grafik / lyd
-- [ ] Gruppe-hotkeys (Ctrl+1) og attack-move (A)
+- [ ] Smartere AI (rebuild, tech-op, angreb på svage punkter)
 - [ ] Pak som desktop-app (Tauri/Electron) for native Win/Mac
 
 ## Licens

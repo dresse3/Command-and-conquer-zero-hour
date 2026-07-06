@@ -14,7 +14,7 @@ export interface WorldApi {
   units: Unit[];
   buildings: Building[];
   supplyFields: SupplyField[];
-  spawnProjectile(from: Vec, target: Unit | Building, damage: number, team: Team): void;
+  spawnProjectile(from: Vec, target: Unit | Building, damage: number, team: Team, splash: number): void;
   findNearestEnemy(x: number, y: number, team: Team, withinSight: number): Unit | Building | null;
   findNearestSupply(x: number, y: number): SupplyField | null;
   nearestDropOff(x: number, y: number, team: Team): Building | null;
