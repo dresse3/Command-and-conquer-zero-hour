@@ -40,6 +40,13 @@ export class Unit {
   private fireCd = 0;
   private repathCd = 0;
 
+  // local avoidance / stuck detection
+  goal: Vec | null = null;
+  private stuckTime = 0;
+  private progressCd = 0;
+  private lastX = 0;
+  private lastY = 0;
+
   // harvester economy
   carrying = 0;
   gatherTimer = 0;
@@ -70,6 +77,8 @@ export class Unit {
     this.target = null;
     this.holdGoal = attackMove ? { x: wx, y: wy } : null;
     this.state = attackMove ? "attack-move" : "moving";
+    this.goal = { x: wx, y: wy };
+    this.stuckTime = 0;
     this.computePath(world, wx, wy);
   }
 
@@ -155,7 +164,7 @@ export class Unit {
         this.computePath(world, t.x, t.y);
         this.repathCd = 0.4;
       }
-      this.stepAlongPath(dt);
+      this.stepAlongPath(dt, world);
     } else {
       this.path = [];
       this.face(t);
@@ -178,7 +187,7 @@ export class Unit {
       this.computePath(world, field.x, field.y);
     }
     if (dist(this, field) > TILE * 0.9) {
-      this.stepAlongPath(dt);
+      this.stepAlongPath(dt, world);
       if (this.path.length === 0) this.computePath(world, field.x, field.y);
       return;
     }
@@ -199,7 +208,7 @@ export class Unit {
     }
     if (dist(this, drop) > drop.radius + TILE) {
       if (this.path.length === 0) this.computePath(world, drop.x, drop.y);
-      this.stepAlongPath(dt);
+      this.stepAlongPath(dt, world);
       return;
     }
     world.addCredits(this.team, this.carrying);
@@ -208,27 +217,100 @@ export class Unit {
     this.path = [];
   }
 
-  private followPath(dt: number, _world: WorldApi) {
-    this.stepAlongPath(dt);
-    if (this.path.length === 0) this.state = "idle";
+  private followPath(dt: number, world: WorldApi) {
+    if (this.path.length === 0) {
+      this.state = "idle";
+      return;
+    }
+    this.stepAlongPath(dt, world);
+    if (this.path.length === 0) {
+      this.state = "idle";
+    } else {
+      this.trackStuck(dt, world);
+    }
   }
 
-  private stepAlongPath(dt: number) {
-    if (this.path.length === 0) return;
-    const wp = this.path[0];
-    const dx = wp.x - this.x;
-    const dy = wp.y - this.y;
-    const d = Math.hypot(dx, dy);
-    const step = this.def.speed * dt;
-    if (d <= step) {
-      this.x = wp.x;
-      this.y = wp.y;
-      this.path.shift();
+  // Detects when a unit has stopped making progress (usually blocked by
+  // friendly units at a crowded destination) and either repaths or accepts
+  // its current spot so it stops shoving.
+  private trackStuck(dt: number, world: WorldApi) {
+    this.progressCd -= dt;
+    if (this.progressCd > 0) return;
+    this.progressCd = 0.5;
+    const moved = Math.hypot(this.x - this.lastX, this.y - this.lastY);
+    this.lastX = this.x;
+    this.lastY = this.y;
+    if (moved < this.def.speed * 0.5 * 0.3) {
+      this.stuckTime += 0.5;
     } else {
-      this.x += (dx / d) * step;
-      this.y += (dy / d) * step;
-      this.angle = Math.atan2(dy, dx);
+      this.stuckTime = 0;
     }
+    if (this.stuckTime >= 1.5) {
+      this.stuckTime = 0;
+      const g = this.goal;
+      const distToGoal = g ? Math.hypot(this.x - g.x, this.y - g.y) : Infinity;
+      if (distToGoal < TILE * 2.2) {
+        // close enough — give up the exact spot instead of pushing forever
+        this.path = [];
+        this.state = "idle";
+      } else if (g) {
+        this.computePath(world, g.x, g.y);
+      }
+    }
+  }
+
+  private stepAlongPath(dt: number, world: WorldApi) {
+    // advance past waypoints we're already near (bigger tolerance on the last)
+    while (this.path.length > 0) {
+      const wp = this.path[0];
+      const dd = Math.hypot(wp.x - this.x, wp.y - this.y);
+      const arrive = this.path.length === 1 ? this.radius + 8 : this.radius + 2;
+      if (dd <= arrive) this.path.shift();
+      else break;
+    }
+    if (this.path.length === 0) return;
+
+    const wp = this.path[0];
+    let vx = wp.x - this.x;
+    let vy = wp.y - this.y;
+    const d = Math.hypot(vx, vy) || 1;
+    vx /= d;
+    vy /= d; // seek direction (unit vector)
+
+    // blend in local avoidance so units flow around each other
+    const av = this.avoidance(world);
+    vx += av.x;
+    vy += av.y;
+    const vl = Math.hypot(vx, vy) || 1;
+    vx /= vl;
+    vy /= vl;
+
+    const step = this.def.speed * dt;
+    this.x += vx * step;
+    this.y += vy * step;
+    this.angle = Math.atan2(vy, vx);
+  }
+
+  // Repulsion from nearby units plus a consistent tangential nudge, which
+  // breaks head-on deadlocks by making both units veer to opposite sides.
+  private avoidance(world: WorldApi): Vec {
+    let ax = 0;
+    let ay = 0;
+    for (const o of world.units) {
+      if (o === this || !o.alive) continue;
+      const dx = this.x - o.x;
+      const dy = this.y - o.y;
+      const rad = this.radius + o.radius + 16;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= 0 || d2 >= rad * rad) continue;
+      const d = Math.sqrt(d2);
+      const w = (rad - d) / rad; // 0 far .. 1 touching
+      const nx = dx / d;
+      const ny = dy / d;
+      ax += nx * w + -ny * w * 0.6; // push away + swirl tangentially
+      ay += ny * w + nx * w * 0.6;
+    }
+    return { x: ax * 1.3, y: ay * 1.3 };
   }
 
   private face(t: Vec) {
