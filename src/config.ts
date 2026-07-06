@@ -254,9 +254,10 @@ export const COLORS = {
   playerDark: "#1b6fb0",
   enemy: "#ef4565",
   enemyDark: "#a51d38",
-  grass: "#3b4a2f",
-  grassAlt: "#42522f",
-  dirt: "#5a4a34",
+  // desert palette (keys kept for compatibility)
+  grass: "#c9a96a", // sand
+  grassAlt: "#bd9c58", // sand alt
+  dirt: "#a37f47", // dirt track
   supply: "#e6c34a",
-  rock: "#4a4a52",
+  rock: "#6d5d45", // rocky outcrop
 };

@@ -39,6 +39,15 @@ npm run preview
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
 | **Esc** | Annullér placering / fjern markering |
 
+## Nyt i v0.3 — grafik & lyd
+
+- **Ørkengrafik:** sandpalette med procedurel terræn-variation, klippeformationer og skygger under alle enheder/bygninger
+- **Detaljerede enheder:** tanks med bælter og **roterende tårn** der sigter mod målet, artilleri med langt løb, soldater med våben, harvester med skovl
+- **Detaljerede bygninger:** bevel-skygger, ikoner pr. type, flammer/røg når livet er lavt, tydelig OFFLINE-markering uden strøm
+- **Partikeleffekter:** eksplosioner (ild + røg + murbrokker), mundingsild, gnister ved træffere, støv ved byggeri
+- **Camera shake** ved store eksplosioner, tracer-spor på projektiler, rally-linje på valgt bygning
+- **Syntetiseret lyd** (Web Audio, ingen filer): skud (gevær/raket/kanon), eksplosioner, byg-færdig, placering, markering, low-power-advarsel, sejr/nederlag-fanfare
+
 ## Hvad er implementeret (v0.2)
 
 - **Tile-baseret kort** (60×60) med terræn og klippeforhindringer
@@ -76,9 +85,11 @@ src/
 - [x] Supply Depot som ekstra afleveringspunkt
 - [x] Minimap med klik-navigation
 - [x] Gruppe-hotkeys (Ctrl+1-9) og attack-move (A)
+- [x] Partikeleffekter, camera shake og syntetiseret lyd
+- [x] Ørkengrafik med skygger og detaljerede enheder/bygninger
 - [ ] Fog of war
 - [ ] Faktions-asymmetri og "general powers" / superweapons
-- [ ] Bedre sprite-grafik / lyd
+- [ ] AI-genererede sprites (foto-realistisk løft)
 - [ ] Smartere AI (rebuild, tech-op, angreb på svage punkter)
 - [ ] Pak som desktop-app (Tauri/Electron) for native Win/Mac
 

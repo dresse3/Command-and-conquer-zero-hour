@@ -17,14 +17,17 @@ export class Renderer {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     ctx.save();
+    ctx.translate(game.camera.shakeX, game.camera.shakeY);
     ctx.scale(game.camera.zoom, game.camera.zoom);
     ctx.translate(-game.camera.x, -game.camera.y);
 
     this.drawTerrain(game);
     this.drawSupply(game);
+    if (game.selectedBuilding) this.drawRally(game.selectedBuilding);
     for (const b of game.buildings) this.drawBuilding(ctx, b);
     for (const u of game.units) this.drawUnit(ctx, u);
     this.drawProjectiles(game);
+    game.effects.draw(ctx);
     if (game.placement) this.drawPlacementGhost(game);
 
     ctx.restore();
@@ -33,6 +36,13 @@ export class Renderer {
     this.drawHud(game);
     this.drawMinimap(game);
     if (game.status !== "playing") this.drawEndScreen(game);
+  }
+
+  // deterministic per-tile pseudo-random value 0..1
+  private tileNoise(tx: number, ty: number): number {
+    let h = (tx * 73856093) ^ (ty * 19349663);
+    h = (h ^ (h >>> 13)) >>> 0;
+    return (h % 1000) / 1000;
   }
 
   private drawTerrain(game: Game) {
@@ -46,11 +56,38 @@ export class Renderer {
     for (let ty = y0; ty < y1; ty++) {
       for (let tx = x0; tx < x1; tx++) {
         const c = game.grid.cell(tx, ty)!;
-        let color = (tx + ty) % 2 === 0 ? COLORS.grass : COLORS.grassAlt;
-        if (c.terrain === 1) color = COLORS.dirt;
-        if (c.terrain === 2) color = COLORS.rock;
-        ctx.fillStyle = color;
-        ctx.fillRect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
+        const n = this.tileNoise(tx, ty);
+        const px = tx * TILE;
+        const py = ty * TILE;
+        if (c.terrain === 2) {
+          // rocky outcrop
+          ctx.fillStyle = COLORS.dirt;
+          ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
+          ctx.fillStyle = COLORS.rock;
+          ctx.beginPath();
+          ctx.ellipse(px + TILE / 2, py + TILE / 2, TILE * 0.42, TILE * 0.34, n * 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "rgba(255,255,255,0.06)";
+          ctx.beginPath();
+          ctx.ellipse(px + TILE * 0.4, py + TILE * 0.4, TILE * 0.2, TILE * 0.14, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = c.terrain === 1 ? COLORS.dirt : n < 0.5 ? COLORS.grass : COLORS.grassAlt;
+          ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
+          // subtle grain
+          if (n < 0.12) {
+            ctx.fillStyle = "rgba(0,0,0,0.05)";
+            ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
+          } else if (n > 0.9) {
+            ctx.fillStyle = "rgba(255,255,255,0.05)";
+            ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
+          }
+          // speckle
+          if (n > 0.4 && n < 0.46) {
+            ctx.fillStyle = "rgba(90,70,40,0.35)";
+            ctx.fillRect(px + n * TILE, py + (1 - n) * TILE, 2, 2);
+          }
+        }
       }
     }
   }
@@ -59,16 +96,19 @@ export class Renderer {
     const ctx = this.ctx;
     for (const f of game.supplyFields) {
       const frac = Math.max(0.25, f.remaining / 4000);
-      ctx.fillStyle = COLORS.supply;
-      ctx.globalAlpha = 0.9;
       const r = f.radius * frac;
+      this.shadow(ctx, f.x, f.y + 4, r * 0.7, r * 0.4);
+      ctx.fillStyle = COLORS.supply;
       ctx.beginPath();
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * Math.PI * 2;
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
         this.diamond(ctx, f.x + Math.cos(a) * r * 0.5, f.y + Math.sin(a) * r * 0.5, r * 0.5);
       }
       ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.beginPath();
+      this.diamond(ctx, f.x, f.y, r * 0.4);
+      ctx.fill();
     }
   }
 
@@ -80,6 +120,30 @@ export class Renderer {
     ctx.closePath();
   }
 
+  private shadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number) {
+    ctx.fillStyle = "rgba(0,0,0,0.22)";
+    ctx.beginPath();
+    ctx.ellipse(x + 3, y + 4, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  private drawRally(b: Building) {
+    const ctx = this.ctx;
+    if (b.def.produces.length === 0) return;
+    ctx.strokeStyle = "rgba(124,252,0,0.5)";
+    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(b.x, b.y);
+    ctx.lineTo(b.rally.x, b.rally.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(124,252,0,0.8)";
+    ctx.beginPath();
+    ctx.arc(b.rally.x, b.rally.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   private drawBuilding(ctx: CanvasRenderingContext2D, b: Building) {
     const px = b.tileX * TILE;
     const py = b.tileY * TILE;
@@ -88,38 +152,62 @@ export class Renderer {
     const main = b.team === "player" ? COLORS.player : COLORS.enemy;
     const dark = b.team === "player" ? COLORS.playerDark : COLORS.enemyDark;
 
+    this.shadow(ctx, b.x, py + h - 6, w * 0.5, h * 0.28);
+
+    // body with bevel
+    ctx.fillStyle = "#20242c";
+    ctx.fillRect(px + 2, py + 2, w - 4, h - 4);
     ctx.fillStyle = dark;
-    ctx.fillRect(px + 3, py + 3, w - 6, h - 6);
+    ctx.fillRect(px + 4, py + 4, w - 8, h - 8);
     ctx.fillStyle = main;
-    ctx.fillRect(px + 7, py + 7, w - 14, h - 14);
-    ctx.strokeStyle = "rgba(0,0,0,0.45)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(px + 3, py + 3, w - 6, h - 6);
+    ctx.fillRect(px + 8, py + 8, w - 16, h - 16);
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fillRect(px + 8, py + 8, w - 16, 4); // top highlight
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillRect(px + 8, py + h - 12, w - 16, 4); // bottom shade
 
     this.buildingGlyph(ctx, b, px, py, w, h);
 
-    // no-power indicator
     if (b.def.needsPower && !b.powered) {
-      ctx.fillStyle = "rgba(0,0,0,0.35)";
-      ctx.fillRect(px + 3, py + 3, w - 6, h - 6);
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      ctx.fillRect(px + 4, py + 4, w - 8, h - 8);
       ctx.fillStyle = "#ffd23f";
-      ctx.font = "bold 14px system-ui, sans-serif";
+      ctx.font = "bold 15px system-ui, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("⚡", b.x, b.y);
+      ctx.fillText("⚡ OFFLINE", b.x, b.y);
     }
 
-    // turret barrel
+    // turret barrel (defensive buildings)
     if (b.def.damage > 0) {
-      ctx.strokeStyle = dark;
-      ctx.lineWidth = 4;
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.fillStyle = "#2b2f38";
       ctx.beginPath();
-      ctx.moveTo(b.x, b.y);
-      ctx.lineTo(b.x, b.y - b.radius - 4);
-      ctx.stroke();
+      ctx.arc(0, 0, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.rotate(b.aimAngle);
+      ctx.fillStyle = dark;
+      ctx.fillRect(0, -2.5, b.radius + 6, 5);
+      ctx.restore();
     }
 
-    this.hpBar(ctx, b.x, py - 8, w - 6, b.hp / b.maxHp, b.hp < b.maxHp);
+    // damage flames
+    const frac = b.hp / b.maxHp;
+    if (frac < 0.45) {
+      const t = performance.now() / 90 + b.id * 3;
+      for (let i = 0; i < 3; i++) {
+        const fx = px + 8 + ((b.id * 37 + i * 53) % (w - 16));
+        const fy = py + 10 + ((b.id * 17 + i * 29) % (h - 18));
+        const flick = 3 + Math.sin(t + i) * 2;
+        ctx.fillStyle = i % 2 ? "rgba(255,150,40,0.8)" : "rgba(255,90,30,0.8)";
+        ctx.beginPath();
+        ctx.arc(fx, fy, Math.max(1, flick), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    this.hpBar(ctx, b.x, py - 8, w - 6, frac, frac < 1);
 
     if (b.selected) {
       ctx.strokeStyle = "#7CFC00";
@@ -129,38 +217,51 @@ export class Renderer {
   }
 
   private buildingGlyph(ctx: CanvasRenderingContext2D, b: Building, px: number, py: number, w: number, h: number) {
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
     const cx = px + w / 2;
     const cy = py + h / 2;
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
     switch (b.kind) {
       case "command":
-        ctx.fillRect(cx - 8, cy - 8, 16, 16);
+        ctx.fillStyle = "rgba(255,255,255,0.22)";
+        ctx.fillRect(cx - 10, cy - 10, 20, 20);
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.fillRect(cx - 5, cy - 5, 10, 10);
         break;
-      case "power":
-        ctx.fillRect(cx - 8, cy - 3, 6, 6);
-        ctx.fillRect(cx + 2, cy - 3, 6, 6);
+      case "power": {
+        ctx.fillStyle = "rgba(20,24,30,0.6)";
+        ctx.beginPath();
+        ctx.arc(cx - 7, cy + 2, 6, 0, Math.PI * 2);
+        ctx.arc(cx + 7, cy + 2, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#ffe27a";
+        ctx.font = "bold 14px system-ui";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("⚡", cx, cy - 6);
         break;
+      }
       case "barracks":
-        ctx.fillRect(cx - 4, cy - 8, 8, 16); // doorway
+        ctx.fillStyle = "rgba(20,24,30,0.55)";
+        ctx.fillRect(cx - 5, cy - 9, 10, 18);
+        ctx.fillStyle = "rgba(255,255,255,0.15)";
+        ctx.fillRect(cx - 5, cy - 9, 10, 3);
         break;
       case "factory":
-        ctx.beginPath();
-        ctx.moveTo(cx - 10, cy + 8);
-        ctx.lineTo(cx, cy - 8);
-        ctx.lineTo(cx + 10, cy + 8);
-        ctx.closePath();
-        ctx.fill();
+        ctx.fillStyle = "rgba(20,24,30,0.5)";
+        for (let i = -1; i <= 1; i++) {
+          ctx.beginPath();
+          ctx.moveTo(cx + i * 9 - 5, cy + 8);
+          ctx.lineTo(cx + i * 9, cy - 6);
+          ctx.lineTo(cx + i * 9 + 5, cy + 8);
+          ctx.closePath();
+          ctx.fill();
+        }
         break;
       case "supply":
-        ctx.fillStyle = "rgba(230,195,74,0.5)";
-        ctx.fillRect(cx - 9, cy - 2, 6, 6);
-        ctx.fillRect(cx - 1, cy - 2, 6, 6);
-        ctx.fillRect(cx - 5, cy - 8, 6, 6);
-        break;
-      case "turret":
-        ctx.beginPath();
-        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillStyle = "rgba(230,195,74,0.6)";
+        ctx.fillRect(cx - 10, cy - 1, 7, 7);
+        ctx.fillRect(cx + 3, cy - 1, 7, 7);
+        ctx.fillRect(cx - 4, cy - 9, 7, 7);
         break;
     }
   }
@@ -169,75 +270,103 @@ export class Renderer {
     const main = u.team === "player" ? COLORS.player : COLORS.enemy;
     const dark = u.team === "player" ? COLORS.playerDark : COLORS.enemyDark;
 
+    this.shadow(ctx, u.x, u.y, u.radius, u.radius * 0.6);
+
     if (u.selected) {
       ctx.strokeStyle = "#7CFC00";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(u.x, u.y, u.radius + 4, 0, Math.PI * 2);
+      ctx.arc(u.x, u.y, u.radius + 5, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    ctx.save();
-    ctx.translate(u.x, u.y);
-    ctx.rotate(u.angle);
-
     switch (u.kind) {
       case "raptor":
+      case "artillery": {
+        const long = u.kind === "artillery";
+        // hull (body facing movement)
+        ctx.save();
+        ctx.translate(u.x, u.y);
+        ctx.rotate(u.angle);
+        ctx.fillStyle = "#1a1c22";
+        ctx.fillRect(-u.radius - 1, -u.radius * 0.8 - 1, u.radius * 2 + 2, u.radius * 1.6 + 2); // tracks
         ctx.fillStyle = dark;
-        ctx.fillRect(-u.radius, -u.radius * 0.75, u.radius * 2, u.radius * 1.5);
+        ctx.fillRect(-u.radius, -u.radius * 0.7, u.radius * 2, u.radius * 1.4);
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        for (let i = -1; i <= 1; i++) ctx.fillRect(-u.radius, i * (u.radius * 0.55) - 1, u.radius * 2, 2);
+        ctx.restore();
+        // turret (faces target)
+        ctx.save();
+        ctx.translate(u.x, u.y);
+        ctx.rotate(u.turretAngle);
         ctx.fillStyle = main;
-        ctx.fillRect(-u.radius * 0.6, -u.radius * 0.5, u.radius * 1.2, u.radius);
-        ctx.fillStyle = dark;
-        ctx.fillRect(0, -2, u.radius * 1.5, 4);
+        ctx.fillRect(-u.radius * 0.55, -u.radius * 0.55, u.radius * 1.1, u.radius * 1.1);
+        ctx.fillStyle = "#2b2f38";
+        ctx.fillRect(0, -2, u.radius * (long ? 2.4 : 1.5), 4);
+        ctx.restore();
         break;
-      case "artillery":
-        ctx.fillStyle = dark;
-        ctx.fillRect(-u.radius, -u.radius * 0.6, u.radius * 2, u.radius * 1.2);
-        ctx.fillStyle = main;
-        ctx.fillRect(-u.radius * 0.5, -u.radius * 0.4, u.radius, u.radius * 0.8);
-        ctx.fillStyle = "#2b2b30";
-        ctx.fillRect(0, -1.5, u.radius * 2.4, 3); // long barrel
-        break;
-      case "harvester":
+      }
+      case "harvester": {
+        ctx.save();
+        ctx.translate(u.x, u.y);
+        ctx.rotate(u.angle);
+        ctx.fillStyle = "#1a1c22";
+        ctx.fillRect(-u.radius - 1, -u.radius - 1, u.radius * 2 + 2, u.radius * 2 + 2);
         ctx.fillStyle = dark;
         ctx.fillRect(-u.radius, -u.radius, u.radius * 2, u.radius * 2);
         ctx.fillStyle = u.carrying > 0 ? COLORS.supply : main;
         ctx.fillRect(-u.radius * 0.6, -u.radius * 0.6, u.radius * 1.2, u.radius * 1.2);
+        ctx.fillStyle = "#2b2f38";
+        ctx.fillRect(u.radius * 0.4, -u.radius * 0.4, u.radius * 0.8, u.radius * 0.8); // scoop
+        ctx.restore();
         break;
+      }
       case "rocketeer":
-        ctx.fillStyle = main;
-        ctx.beginPath();
-        ctx.arc(0, 0, u.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#e8e8e8";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.fillStyle = "#2b2b30";
-        ctx.fillRect(0, -2.5, u.radius + 6, 5); // launcher
-        break;
-      default: // ranger
-        ctx.fillStyle = main;
-        ctx.beginPath();
-        ctx.arc(0, 0, u.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = dark;
-        ctx.lineWidth = 2;
-        ctx.stroke();
+      case "ranger":
+      default: {
+        // soldier body + helmet, weapon aims at turretAngle
         ctx.fillStyle = dark;
-        ctx.fillRect(0, -1.5, u.radius + 4, 3);
+        ctx.beginPath();
+        ctx.arc(u.x, u.y, u.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = main;
+        ctx.beginPath();
+        ctx.arc(u.x, u.y, u.radius * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(u.x, u.y);
+        ctx.rotate(u.turretAngle);
+        ctx.fillStyle = "#20242c";
+        if (u.kind === "rocketeer") ctx.fillRect(0, -2.5, u.radius + 7, 5);
+        else ctx.fillRect(0, -1.5, u.radius + 5, 3);
+        ctx.restore();
         break;
+      }
     }
-    ctx.restore();
 
-    if (u.hp < u.maxHp) this.hpBar(ctx, u.x, u.y - u.radius - 8, u.radius * 2 + 6, u.hp / u.maxHp, true);
+    const frac = u.hp / u.maxHp;
+    if (frac < 1) this.hpBar(ctx, u.x, u.y - u.radius - 8, u.radius * 2 + 6, frac, true);
   }
 
   private drawProjectiles(game: Game) {
     const ctx = this.ctx;
     for (const p of game.projectiles) {
-      ctx.fillStyle = p.splash > 0 ? "#ff9f45" : "#ffe27a";
+      if (!p.target.alive) continue;
+      const dx = p.target.x - p.x;
+      const dy = p.target.y - p.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const ux = dx / d;
+      const uy = dy / d;
+      const len = p.splash > 0 ? 16 : 10;
+      ctx.strokeStyle = p.splash > 0 ? "rgba(255,140,50,0.8)" : "rgba(255,230,120,0.8)";
+      ctx.lineWidth = p.splash > 0 ? 3 : 2;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.splash > 0 ? 4 : 2.5, 0, Math.PI * 2);
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - ux * len, p.y - uy * len);
+      ctx.stroke();
+      ctx.fillStyle = p.splash > 0 ? "#ffb347" : "#fff1a8";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.splash > 0 ? 3.5 : 2, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -249,19 +378,24 @@ export class Renderer {
     const { tx, ty } = game.placementTile(world.x, world.y, kind);
     const ok = game.canPlace(kind, tx, ty, "player") && game.credits["player"] >= def.cost;
     const ctx = this.ctx;
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.45;
     ctx.fillStyle = ok ? "#4ade80" : "#ef4444";
     ctx.fillRect(tx * TILE, ty * TILE, def.tilesW * TILE, def.tilesH * TILE);
     ctx.globalAlpha = 1;
     ctx.strokeStyle = ok ? "#4ade80" : "#ef4444";
     ctx.lineWidth = 2;
     ctx.strokeRect(tx * TILE, ty * TILE, def.tilesW * TILE, def.tilesH * TILE);
+    // build grid hint
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 1;
+    for (let gx = 0; gx <= def.tilesW; gx++)
+      ctx.strokeRect(tx * TILE + gx * TILE, ty * TILE, 0.1, def.tilesH * TILE);
   }
 
   private hpBar(ctx: CanvasRenderingContext2D, cx: number, y: number, width: number, frac: number, show: boolean) {
     if (!show) return;
     const x = cx - width / 2;
-    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
     ctx.fillRect(x - 1, y - 1, width + 2, 6);
     ctx.fillStyle = frac > 0.5 ? "#4ade80" : frac > 0.25 ? "#facc15" : "#ef4444";
     ctx.fillRect(x, y, width * frac, 4);
@@ -283,8 +417,7 @@ export class Renderer {
     const W = this.canvas.width;
     const H = this.canvas.height;
 
-    // top bar
-    ctx.fillStyle = "rgba(10,12,16,0.82)";
+    ctx.fillStyle = "rgba(10,12,16,0.85)";
     ctx.fillRect(0, 0, W, 40);
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
@@ -307,17 +440,12 @@ export class Renderer {
 
     ctx.fillStyle = "#94a3b8";
     ctx.textAlign = "right";
-    ctx.fillText(
-      "Arrows/edges: pan · wheel: zoom · click building to build · A: attack-move · Ctrl+1-9: groups",
-      W - 16,
-      21,
-    );
+    ctx.fillText("Arrows/edges: pan · wheel: zoom · click building to build · A: attack-move · Ctrl+1-9: groups", W - 16, 21);
     ctx.textAlign = "left";
 
-    // bottom command bar
-    ctx.fillStyle = "rgba(10,12,16,0.9)";
+    ctx.fillStyle = "rgba(10,12,16,0.92)";
     ctx.fillRect(0, H - HUD_HEIGHT, W, HUD_HEIGHT);
-    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillStyle = "rgba(124,252,0,0.25)";
     ctx.fillRect(0, H - HUD_HEIGHT, W, 2);
 
     const sel = game.selectedBuilding;
@@ -330,10 +458,7 @@ export class Renderer {
       ctx.fillStyle = "#e2e8f0";
       ctx.font = "bold 13px system-ui, sans-serif";
       ctx.fillText(sel.def.name.toUpperCase(), 16, H - HUD_HEIGHT + 14);
-      for (const rect of buttonRects(entries, H)) {
-        this.drawBuildButton(ctx, game, rect.entry, rect.x, rect.y, rect.w, rect.h);
-      }
-      // production queue
+      for (const rect of buttonRects(entries, H)) this.drawBuildButton(ctx, game, rect.entry, rect.x, rect.y, rect.w, rect.h);
       if (sel.queue.length > 0) {
         const qx = 16 + entries.length * 112 + 16;
         const qy = H - HUD_HEIGHT + 18;
@@ -385,7 +510,6 @@ export class Renderer {
     ctx.strokeStyle = affordable ? "rgba(61,169,252,0.7)" : "rgba(120,120,130,0.5)";
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x, y, w, h);
-
     ctx.fillStyle = affordable ? "#e2e8f0" : "#7a8290";
     ctx.font = "bold 13px system-ui, sans-serif";
     ctx.textAlign = "left";
@@ -395,8 +519,7 @@ export class Renderer {
     ctx.fillText(`⛃ ${def.cost}`, x + 7, y + 34);
     ctx.fillStyle = "#94a3b8";
     ctx.font = "10px system-ui, sans-serif";
-    const tag = entry.type === "building" ? "structure" : "unit";
-    ctx.fillText(`[${entry.hotkey}] ${tag}`, x + 7, y + 51);
+    ctx.fillText(`[${entry.hotkey}] ${entry.type === "building" ? "structure" : "unit"}`, x + 7, y + 51);
   }
 
   private drawMinimap(game: Game) {
@@ -408,7 +531,6 @@ export class Renderer {
     ctx.fillStyle = "rgba(8,10,14,0.92)";
     ctx.fillRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8);
 
-    // terrain (downsampled)
     const step = 3;
     const sx = r.w / game.grid.w;
     const sy = r.h / game.grid.h;
@@ -419,7 +541,6 @@ export class Renderer {
         ctx.fillRect(r.x + tx * sx, r.y + ty * sy, sx * step + 1, sy * step + 1);
       }
     }
-
     for (const f of game.supplyFields) {
       const p = worldToMinimap(f.x, f.y, W, H);
       ctx.fillStyle = COLORS.supply;
@@ -435,8 +556,6 @@ export class Renderer {
       ctx.fillStyle = u.team === "player" ? "#bfe4ff" : "#ffc2cd";
       ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
     }
-
-    // viewport rectangle
     const tl = worldToMinimap(game.camera.x, game.camera.y, W, H);
     const br = worldToMinimap(
       game.camera.x + game.camera.viewW / game.camera.zoom,
@@ -447,7 +566,6 @@ export class Renderer {
     ctx.strokeStyle = "rgba(255,255,255,0.85)";
     ctx.lineWidth = 1.5;
     ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
-
     ctx.strokeStyle = "rgba(255,255,255,0.2)";
     ctx.lineWidth = 1;
     ctx.strokeRect(r.x, r.y, r.w, r.h);

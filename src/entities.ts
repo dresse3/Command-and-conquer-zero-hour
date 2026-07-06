@@ -30,7 +30,8 @@ export class Unit {
 
   x: number;
   y: number;
-  angle = 0;
+  angle = 0; // body / movement facing
+  turretAngle = 0; // weapon facing
 
   state: UnitState = "idle";
   path: Vec[] = [];
@@ -159,7 +160,7 @@ export class Unit {
     const d = dist(this, t);
     const reach = this.def.range + t.radius;
     if (d > reach) {
-      this.face(t);
+      this.turretAngle = Math.atan2(t.y - this.y, t.x - this.x);
       if (this.repathCd <= 0) {
         this.computePath(world, t.x, t.y);
         this.repathCd = 0.4;
@@ -167,7 +168,7 @@ export class Unit {
       this.stepAlongPath(dt, world);
     } else {
       this.path = [];
-      this.face(t);
+      this.turretAngle = Math.atan2(t.y - this.y, t.x - this.x);
       if (this.fireCd <= 0) {
         world.spawnProjectile({ x: this.x, y: this.y }, t, this.def.damage, this.team, this.def.splash);
         this.fireCd = 1 / this.def.fireRate;
@@ -289,6 +290,7 @@ export class Unit {
     this.x += vx * step;
     this.y += vy * step;
     this.angle = Math.atan2(vy, vx);
+    this.turretAngle = this.angle;
   }
 
   // Repulsion from nearby units plus a consistent tangential nudge, which
@@ -311,10 +313,6 @@ export class Unit {
       ay += ny * w + nx * w * 0.6;
     }
     return { x: ax * 1.3, y: ay * 1.3 };
-  }
-
-  private face(t: Vec) {
-    this.angle = Math.atan2(t.y - this.y, t.x - this.x);
   }
 
   private separate(world: WorldApi) {
@@ -347,6 +345,7 @@ export class Building {
 
   queue: { kind: UnitKind; timeLeft: number; total: number }[] = [];
   rally: Vec;
+  aimAngle = -Math.PI / 2; // turret facing (default: up)
   private fireCd = 0;
 
   constructor(public team: Team, public kind: BuildingKind, public tileX: number, public tileY: number) {
@@ -385,9 +384,16 @@ export class Building {
     if (this.def.damage > 0 && this.functional) {
       this.fireCd -= dt;
       const enemy = world.findNearestEnemy(this.x, this.y, this.team, this.def.range);
-      if (enemy && this.fireCd <= 0) {
-        world.spawnProjectile({ x: this.x, y: this.y - this.radius }, enemy, this.def.damage, this.team, 0);
-        this.fireCd = 1 / this.def.fireRate;
+      if (enemy) {
+        this.aimAngle = Math.atan2(enemy.y - this.y, enemy.x - this.x);
+        if (this.fireCd <= 0) {
+          const muzzle = {
+            x: this.x + Math.cos(this.aimAngle) * this.radius,
+            y: this.y + Math.sin(this.aimAngle) * this.radius,
+          };
+          world.spawnProjectile(muzzle, enemy, this.def.damage, this.team, 0);
+          this.fireCd = 1 / this.def.fireRate;
+        }
       }
     }
 
@@ -463,21 +469,26 @@ export class Projectile {
   }
 
   private impact(world: WorldApi) {
+    const ix = this.target.x;
+    const iy = this.target.y;
     if (this.splash <= 0) {
       this.target.takeDamage(this.damage);
+      world.effects.hit(ix, iy);
       return;
     }
+    world.effects.explosion(ix, iy, 1.1);
+    world.audio.explosion(0.4);
     const r2 = this.splash * this.splash;
     for (const u of world.units) {
       if (!u.alive || u.team === this.team) continue;
-      const dx = u.x - this.target.x;
-      const dy = u.y - this.target.y;
+      const dx = u.x - ix;
+      const dy = u.y - iy;
       if (dx * dx + dy * dy <= r2) u.takeDamage(this.damage);
     }
     for (const b of world.buildings) {
       if (!b.alive || b.team === this.team) continue;
-      const dx = b.x - this.target.x;
-      const dy = b.y - this.target.y;
+      const dx = b.x - ix;
+      const dy = b.y - iy;
       if (dx * dx + dy * dy <= r2) b.takeDamage(this.damage * 0.6);
     }
   }

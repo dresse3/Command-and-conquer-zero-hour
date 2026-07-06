@@ -9,6 +9,25 @@ export class Camera {
   zoom = 1;
   viewW = 0;
   viewH = 0;
+  shakeX = 0;
+  shakeY = 0;
+  private shakeMag = 0;
+
+  shake(mag: number) {
+    this.shakeMag = Math.min(14, Math.max(this.shakeMag, mag));
+  }
+
+  updateShake(dt: number) {
+    if (this.shakeMag <= 0.1) {
+      this.shakeMag = 0;
+      this.shakeX = 0;
+      this.shakeY = 0;
+      return;
+    }
+    this.shakeX = (Math.random() - 0.5) * 2 * this.shakeMag;
+    this.shakeY = (Math.random() - 0.5) * 2 * this.shakeMag;
+    this.shakeMag *= Math.pow(0.0001, dt); // fast decay
+  }
 
   resize(w: number, h: number) {
     this.viewW = w;

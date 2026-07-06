@@ -1,6 +1,8 @@
 import type { Team } from "./config";
 import type { Grid } from "./grid";
 import type { Unit, Building, SupplyField } from "./entities";
+import type { ParticleSystem } from "./effects";
+import type { Sfx } from "./audio";
 
 export interface Vec {
   x: number;
@@ -14,6 +16,8 @@ export interface WorldApi {
   units: Unit[];
   buildings: Building[];
   supplyFields: SupplyField[];
+  effects: ParticleSystem;
+  audio: Sfx;
   spawnProjectile(from: Vec, target: Unit | Building, damage: number, team: Team, splash: number): void;
   findNearestEnemy(x: number, y: number, team: Team, withinSight: number): Unit | Building | null;
   findNearestSupply(x: number, y: number): SupplyField | null;

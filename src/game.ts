@@ -17,6 +17,8 @@ import { Camera } from "./camera";
 import { Input, type InputHandlers } from "./input";
 import { Unit, Building, SupplyField, Projectile, type Target } from "./entities";
 import { EnemyAI } from "./ai";
+import { ParticleSystem } from "./effects";
+import { Sfx } from "./audio";
 import { hudHitTest, isInHud, isInMinimap, minimapToWorld } from "./hud";
 import type { Vec, WorldApi } from "./types";
 import { dist2 } from "./types";
@@ -30,6 +32,8 @@ export class Game implements WorldApi, InputHandlers {
   buildings: Building[] = [];
   supplyFields: SupplyField[] = [];
   projectiles: Projectile[] = [];
+  effects = new ParticleSystem();
+  audio = new Sfx();
 
   credits: Record<string, number> = { player: START_CREDITS, enemy: START_CREDITS };
   power: Record<string, number> = { player: 0, enemy: 0 };
@@ -134,6 +138,9 @@ export class Game implements WorldApi, InputHandlers {
   // ---------------- WorldApi ----------------
   spawnProjectile(from: Vec, target: Target, damage: number, team: Team, splash: number) {
     this.projectiles.push(new Projectile(from, target, damage, team, splash));
+    const ang = Math.atan2(target.y - from.y, target.x - from.x);
+    this.effects.muzzleFlash(from.x, from.y, ang);
+    this.audio.shoot(splash > 0 ? "cannon" : damage >= 50 ? "rocket" : "gun");
   }
 
   findNearestEnemy(x: number, y: number, team: Team, withinSight: number): Target | null {
@@ -211,6 +218,7 @@ export class Game implements WorldApi, InputHandlers {
         used += b.def.powerUsed;
       }
       const net = provided - used;
+      if (team === "player" && net < 0 && this.power[team] >= 0) this.audio.lowPower();
       this.power[team] = net;
       for (const b of this.buildings) {
         if (b.team === team) b.powered = net >= 0;
@@ -220,6 +228,7 @@ export class Game implements WorldApi, InputHandlers {
 
   // ---------------- input handlers ----------------
   onSelect(rect: { x: number; y: number; w: number; h: number }, additive: boolean) {
+    this.audio.unlock();
     const cx = rect.x + rect.w / 2;
     const cy = rect.y + rect.h / 2;
     const isClick = rect.w < 6 && rect.h < 6;
@@ -267,11 +276,13 @@ export class Game implements WorldApi, InputHandlers {
         this.clearSelection();
         this.selectedBuilding = hitB;
         hitB.selected = true;
+        this.audio.select();
         return;
       }
     }
 
     if (!additive) this.clearSelection();
+    const before = this.selected.length;
     for (const u of this.units) {
       if (!u.alive || u.team !== "player") continue;
       if (u.x >= a.x && u.x <= b.x && u.y >= a.y && u.y <= b.y && !u.selected) {
@@ -279,6 +290,7 @@ export class Game implements WorldApi, InputHandlers {
         this.selected.push(u);
       }
     }
+    if (this.selected.length > before) this.audio.select();
     if (this.selected.length > 0 && this.selectedBuilding) {
       this.selectedBuilding.selected = false;
       this.selectedBuilding = null;
@@ -286,6 +298,7 @@ export class Game implements WorldApi, InputHandlers {
   }
 
   onCommand(sx: number, sy: number, _additive: boolean) {
+    this.audio.unlock();
     if (this.placement) {
       this.placement = null;
       this.showToast("Placement cancelled");
@@ -304,6 +317,7 @@ export class Game implements WorldApi, InputHandlers {
 
   private issueCommand(wx: number, wy: number) {
     if (this.selected.length === 0) return;
+    this.audio.order();
     const enemy = this.pickTarget(wx, wy, "player");
     if (enemy) {
       for (const u of this.selected) if (u.def.damage > 0) u.attack(enemy);
@@ -331,6 +345,7 @@ export class Game implements WorldApi, InputHandlers {
   }
 
   onHotkey(key: string) {
+    this.audio.unlock();
     if (key === "a" && !this.placement) {
       if (this.selected.some((u) => u.def.damage > 0)) {
         this.pendingAttackMove = true;
@@ -464,6 +479,7 @@ export class Game implements WorldApi, InputHandlers {
     }
     this.credits["player"] -= def.cost;
     b.enqueue(entry.key as UnitKind, def.buildTime);
+    this.audio.build();
     this.showToast(`Queued ${def.name}`);
   }
 
@@ -505,8 +521,10 @@ export class Game implements WorldApi, InputHandlers {
       return;
     }
     this.credits["player"] -= def.cost;
-    this.placeStructure("player", kind, tx, ty);
+    const nb = this.placeStructure("player", kind, tx, ty);
     this.recalcPower();
+    this.effects.dust(nb.x, nb.y, 14);
+    this.audio.place();
     this.showToast(`${def.name} built`);
     if (!this.input.keys.has("shift")) this.placement = null; // shift = keep placing
   }
@@ -519,6 +537,8 @@ export class Game implements WorldApi, InputHandlers {
   // ---------------- main update ----------------
   update(dt: number) {
     this.updateCamera(dt);
+    this.camera.updateShake(dt);
+    this.effects.update(dt);
     if (this.status !== "playing") return;
 
     let structureChanged = false;
@@ -531,6 +551,7 @@ export class Game implements WorldApi, InputHandlers {
         const u = this.spawnUnit(b.team, finished, spawn.x, spawn.y);
         u.moveTo(this, b.rally.x, b.rally.y, b.team === "enemy");
         if (b.team === "enemy") this.ai.guard(u);
+        if (b.team === "player") this.audio.ready();
       }
     }
 
@@ -538,11 +559,20 @@ export class Game implements WorldApi, InputHandlers {
     for (const p of this.projectiles) p.update(dt, this);
     this.ai.update(dt);
 
-    // cleanup
-    this.units = this.units.filter((u) => u.alive);
+    // cleanup — dead entities emit an explosion once as they are removed
+    this.units = this.units.filter((u) => {
+      if (!u.alive) {
+        this.effects.explosion(u.x, u.y, 0.6 + u.radius / 26);
+        this.audio.explosion(0.25);
+      }
+      return u.alive;
+    });
     this.selected = this.selected.filter((u) => u.alive);
     this.buildings = this.buildings.filter((b) => {
       if (!b.alive) {
+        this.effects.explosion(b.x, b.y, 2.2);
+        this.audio.explosion(0.9);
+        this.camera.shake(12);
         this.unblockTiles(b);
         structureChanged = true;
       }
@@ -559,8 +589,13 @@ export class Game implements WorldApi, InputHandlers {
       if (this.toastCd <= 0) this.toast = "";
     }
 
-    if (!this.baseOf("enemy")) this.status = "won";
-    else if (!this.baseOf("player")) this.status = "lost";
+    if (!this.baseOf("enemy")) {
+      this.status = "won";
+      this.audio.fanfare(true);
+    } else if (!this.baseOf("player")) {
+      this.status = "lost";
+      this.audio.fanfare(false);
+    }
   }
 
   private freeSpawnNear(b: Building): Vec {
