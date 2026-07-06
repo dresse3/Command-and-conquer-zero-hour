@@ -21,8 +21,8 @@ import { ParticleSystem } from "./effects";
 import { Sfx } from "./audio";
 import { VisibilityMap } from "./fog";
 import { PowerManager } from "./powers";
-import { POWERS, POWER_ORDER, type PowerKind } from "./config";
-import { hudHitTest, isInHud, isInMinimap, minimapToWorld, powerHitTest } from "./hud";
+import { POWERS, POWER_ORDER, POWER_POINT_COST, PROMO_THRESHOLDS, SELL_REFUND, type PowerKind } from "./config";
+import { hudHitTest, isInHud, isInMinimap, minimapToWorld, powerHitTest, isInSellButton } from "./hud";
 import type { Vec, WorldApi } from "./types";
 import { dist2 } from "./types";
 
@@ -52,6 +52,11 @@ export class Game implements WorldApi, InputHandlers {
   playerPowers = new PowerManager();
   enemyPowers = new PowerManager();
   private fogCd = 0;
+
+  // promotion: XP earned by destroying the enemy grants points to spend on powers
+  xp: Record<string, number> = { player: 0, enemy: 0 };
+  promoPoints: Record<string, number> = { player: 0, enemy: 0 };
+  private promoGiven: Record<string, number> = { player: 0, enemy: 0 };
 
   status: GameStatus = "playing";
   toast = "";
@@ -268,6 +273,32 @@ export class Game implements WorldApi, InputHandlers {
     return this.baseOf("player");
   }
 
+  anyBuilding(team: Team): Building | null {
+    return this.buildings.find((b) => b.team === team && b.alive) ?? null;
+  }
+
+  powersFor(team: Team): PowerManager {
+    return team === "player" ? this.playerPowers : this.enemyPowers;
+  }
+
+  // XP toward promotion points, earned by destroying the enemy.
+  awardXp(team: Team, amount: number) {
+    this.xp[team] += amount;
+    let earned = 0;
+    while (
+      this.promoGiven[team] < PROMO_THRESHOLDS.length &&
+      this.xp[team] >= PROMO_THRESHOLDS[this.promoGiven[team]]
+    ) {
+      this.promoGiven[team]++;
+      this.promoPoints[team]++;
+      earned++;
+    }
+    if (earned > 0 && team === "player") {
+      this.showToast(`Promotion! +${earned} point — unlock a power`);
+      this.audio.ready();
+    }
+  }
+
   // ---------------- power ----------------
   private recalcPower() {
     for (const team of ["player", "enemy"] as Team[]) {
@@ -312,8 +343,16 @@ export class Game implements WorldApi, InputHandlers {
       return;
     }
 
-    // HUD: power buttons take priority, then build buttons
+    // HUD: sell button, then power buttons, then build buttons
     if (isInHud(cy, this.canvas.height)) {
+      if (
+        this.selectedBuilding &&
+        this.selectedBuilding.team === "player" &&
+        isInSellButton(cx, cy, this.canvas.width, this.canvas.height)
+      ) {
+        this.sellSelectedBuilding();
+        return;
+      }
       const pk = powerHitTest(cx, cy, this.canvas.width, this.canvas.height);
       if (pk) {
         this.requestPower(pk);
@@ -443,6 +482,10 @@ export class Game implements WorldApi, InputHandlers {
       }
       return;
     }
+    if (key === "k") {
+      this.sellSelectedBuilding();
+      return;
+    }
     // general power hotkeys
     for (const pk of POWER_ORDER) {
       if (POWERS[pk].hotkey.toLowerCase() === key) {
@@ -537,6 +580,19 @@ export class Game implements WorldApi, InputHandlers {
   // ---------------- general powers ----------------
   private requestPower(kind: PowerKind) {
     if (this.status !== "playing") return;
+    // must be unlocked with a promotion point first
+    if (!this.playerPowers.isUnlocked(kind)) {
+      const cost = POWER_POINT_COST[kind];
+      if (this.promoPoints["player"] >= cost) {
+        this.promoPoints["player"] -= cost;
+        this.playerPowers.unlock(kind);
+        this.audio.build();
+        this.showToast(`${POWERS[kind].name} unlocked!`);
+      } else {
+        this.showToast(`Need ${cost} promotion point${cost > 1 ? "s" : ""} — destroy enemies to earn`);
+      }
+      return;
+    }
     if (!this.playerPowers.canFire(kind)) {
       this.showToast(`${POWERS[kind].name} charging…`);
       return;
@@ -678,11 +734,13 @@ export class Game implements WorldApi, InputHandlers {
     for (const p of this.projectiles) p.update(dt, this);
     this.ai.update(dt);
 
-    // cleanup — dead entities emit an explosion once as they are removed
+    // cleanup — dead entities emit an explosion once as they are removed;
+    // the opposing team earns promotion XP for the kill.
     this.units = this.units.filter((u) => {
       if (!u.alive) {
         this.effects.explosion(u.x, u.y, 0.6 + u.radius / 26);
         this.audio.explosion(0.25);
+        this.awardXp(u.team === "player" ? "enemy" : "player", Math.max(8, Math.round(u.def.cost / 12)));
       }
       return u.alive;
     });
@@ -693,6 +751,7 @@ export class Game implements WorldApi, InputHandlers {
         this.audio.explosion(0.9);
         this.camera.shake(12);
         this.unblockTiles(b);
+        this.awardXp(b.team === "player" ? "enemy" : "player", Math.round(b.def.cost / 10) + 20);
         structureChanged = true;
       }
       return b.alive;
@@ -708,13 +767,36 @@ export class Game implements WorldApi, InputHandlers {
       if (this.toastCd <= 0) this.toast = "";
     }
 
-    if (!this.baseOf("enemy")) {
+    // Defeat only when ALL of a side's buildings are gone (losing the Command
+    // Center alone is survivable — you can still fight and recover).
+    const enemyBuildings = this.buildings.some((b) => b.team === "enemy");
+    const playerBuildings = this.buildings.some((b) => b.team === "player");
+    if (!enemyBuildings) {
       this.status = "won";
       this.audio.fanfare(true);
-    } else if (!this.baseOf("player")) {
+    } else if (!playerBuildings) {
       this.status = "lost";
       this.audio.fanfare(false);
     }
+  }
+
+  sellSelectedBuilding() {
+    const b = this.selectedBuilding;
+    if (!b || b.team !== "player") {
+      this.showToast("Select your building to sell");
+      return;
+    }
+    const refund = Math.round(b.def.cost * SELL_REFUND);
+    this.credits["player"] += refund;
+    // remove directly (no explosion / no enemy XP, unlike being destroyed)
+    b.alive = false;
+    this.buildings = this.buildings.filter((x) => x !== b);
+    this.unblockTiles(b);
+    this.recalcPower();
+    this.effects.dust(b.x, b.y, 16);
+    this.audio.place();
+    this.selectedBuilding = null;
+    this.showToast(`Sold ${b.def.name} (+${refund})`);
   }
 
   private freeSpawnNear(b: Building): Vec {

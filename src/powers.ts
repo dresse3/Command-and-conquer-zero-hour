@@ -9,14 +9,25 @@ type Active =
 // transient visuals (falling shells, the strafing jet).
 export class PowerManager {
   ready: Record<PowerKind, number> = { artillery: 0, airstrike: 0, reinforce: 0 };
+  unlocked = new Set<PowerKind>();
   private active: Active[] = [];
 
   constructor() {
-    for (const k of POWER_ORDER) this.ready[k] = Math.max(0, POWERS[k].cooldown - POWERS[k].startCharge);
+    // start fully uncharged and locked — powers must be earned & unlocked
+    for (const k of POWER_ORDER) this.ready[k] = POWERS[k].cooldown;
+  }
+
+  isUnlocked(kind: PowerKind): boolean {
+    return this.unlocked.has(kind);
+  }
+
+  unlock(kind: PowerKind) {
+    this.unlocked.add(kind);
+    this.ready[kind] = 0; // ready to fire once on unlock
   }
 
   canFire(kind: PowerKind): boolean {
-    return this.ready[kind] <= 0;
+    return this.unlocked.has(kind) && this.ready[kind] <= 0;
   }
 
   chargeFrac(kind: PowerKind): number {

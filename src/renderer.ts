@@ -1,7 +1,7 @@
-import { TILE, COLORS, UNITS, BUILDINGS, POWERS, type BuildEntry } from "./config";
+import { TILE, COLORS, UNITS, BUILDINGS, POWERS, POWER_POINT_COST, SELL_REFUND, type BuildEntry } from "./config";
 import type { Game } from "./game";
 import { Unit, Building } from "./entities";
-import { buttonRects, powerButtonRects, HUD_HEIGHT, minimapRect, worldToMinimap } from "./hud";
+import { buttonRects, powerButtonRects, sellButtonRect, HUD_HEIGHT, minimapRect, worldToMinimap } from "./hud";
 
 export class Renderer {
   ctx: CanvasRenderingContext2D;
@@ -475,17 +475,22 @@ export class Renderer {
     ctx.font = "bold 15px system-ui, sans-serif";
     ctx.fillText(`⚡ ${pw >= 0 ? "+" : ""}${pw}`, 150, 21);
 
+    const pts = game.promoPoints["player"];
+    ctx.fillStyle = pts > 0 ? "#facc15" : "#8a8f99";
+    ctx.font = "bold 15px system-ui, sans-serif";
+    ctx.fillText(`★ ${pts} pt`, 250, 21);
+
     ctx.fillStyle = "#cbd5e1";
     ctx.font = "14px system-ui, sans-serif";
     const army = game.units.filter((u) => u.team === "player" && u.alive).length;
     const enemyArmy = game.units.filter((u) => u.team === "enemy" && u.alive).length;
-    ctx.fillText(`Units: ${army}`, 240, 21);
+    ctx.fillText(`Units: ${army}`, 340, 21);
     ctx.fillStyle = COLORS.enemy;
-    ctx.fillText(`Hostiles: ${enemyArmy}`, 330, 21);
+    ctx.fillText(`Hostiles: ${enemyArmy}`, 430, 21);
 
     ctx.fillStyle = "#94a3b8";
     ctx.textAlign = "right";
-    ctx.fillText("Arrows/edges: pan · wheel: zoom · click building to build · A: attack-move · Z/X/C: powers", W - 16, 21);
+    ctx.fillText("Arrows/edges: pan · wheel: zoom · A: attack-move · Z/X/C: powers · K: sell · ★ = promotion points", W - 16, 21);
     ctx.textAlign = "left";
 
     ctx.fillStyle = "rgba(10,12,16,0.92)";
@@ -504,6 +509,7 @@ export class Renderer {
       ctx.font = "bold 13px system-ui, sans-serif";
       ctx.fillText(sel.def.name.toUpperCase(), 16, H - HUD_HEIGHT + 14);
       for (const rect of buttonRects(entries, H)) this.drawBuildButton(ctx, game, rect.entry, rect.x, rect.y, rect.w, rect.h);
+      if (sel.team === "player") this.drawSellButton(sel);
       if (sel.queue.length > 0) {
         const qx = 16 + entries.length * 112 + 16;
         const qy = H - HUD_HEIGHT + 18;
@@ -575,8 +581,30 @@ export class Renderer {
     const H = this.canvas.height;
     for (const r of powerButtonRects(W, H)) {
       const def = POWERS[r.kind];
+      const unlocked = game.playerPowers.isUnlocked(r.kind);
       const frac = game.playerPowers.chargeFrac(r.kind);
-      const ready = frac >= 1;
+      const ready = unlocked && frac >= 1;
+
+      if (!unlocked) {
+        const affordable = game.promoPoints["player"] >= POWER_POINT_COST[r.kind];
+        ctx.fillStyle = "rgba(40,44,54,0.55)";
+        ctx.fillRect(r.x, r.y, r.w, r.h);
+        ctx.strokeStyle = affordable ? "#facc15" : "rgba(110,110,120,0.6)";
+        ctx.lineWidth = affordable ? 2 : 1.5;
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        ctx.textAlign = "left";
+        ctx.fillStyle = affordable ? "#e2e8f0" : "#7a8290";
+        ctx.font = "bold 12px system-ui, sans-serif";
+        const words = def.name.split(" ");
+        ctx.fillText(words[0], r.x + 7, r.y + 15);
+        if (words[1]) ctx.fillText(words.slice(1).join(" "), r.x + 7, r.y + 29);
+        ctx.fillStyle = affordable ? "#facc15" : "#8a8f99";
+        ctx.font = "10px system-ui, sans-serif";
+        const cost = POWER_POINT_COST[r.kind];
+        ctx.fillText(`🔒 ${cost} pt [${def.hotkey}]`, r.x + 7, r.y + 50);
+        continue;
+      }
+
       ctx.fillStyle = ready ? "rgba(230,195,74,0.18)" : "rgba(50,54,64,0.4)";
       ctx.fillRect(r.x, r.y, r.w, r.h);
       ctx.fillStyle = "rgba(230,195,74,0.28)";
@@ -599,6 +627,21 @@ export class Renderer {
       ctx.font = "10px system-ui, sans-serif";
       ctx.fillText(ready ? `[${def.hotkey}] READY` : `${Math.ceil((1 - frac) * def.cooldown)}s`, r.x + 7, r.y + 50);
     }
+  }
+
+  private drawSellButton(b: Building) {
+    const ctx = this.ctx;
+    const r = sellButtonRect(this.canvas.width, this.canvas.height);
+    ctx.fillStyle = "rgba(239,68,68,0.22)";
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = "rgba(239,68,68,0.85)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = "#fecaca";
+    ctx.font = "bold 12px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`SELL +${Math.round(b.def.cost * SELL_REFUND)}`, r.x + r.w / 2, r.y + r.h / 2 + 1);
+    ctx.textAlign = "left";
   }
 
   private drawPowerReticle(game: Game) {

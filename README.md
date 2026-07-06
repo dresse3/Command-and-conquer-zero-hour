@@ -36,8 +36,17 @@ npm run preview
 | **A** derefter klik | Attack-move til punkt |
 | **Ctrl + 1-9** | Gem kontrolgruppe · **1-9** vælg gruppe |
 | **Byg-hotkeys** (når bygning valgt) | fx R/E = infanteri, T/Y = køretøjer, 1-5 = strukturer |
+| **Z / X / C** | Lås op / affyr general power (kræver ★ promotion points) |
+| **K** eller SELL-knap | Sælg valgt bygning (50% refusion) |
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
-| **Esc** | Annullér placering / fjern markering |
+| **Esc** | Annullér placering / power / fjern markering |
+
+## Nyt i v0.5 — finpudsning & balance
+
+- **Promotion points:** general powers er ikke længere gratis. Du optjener point ved at ødelægge fjendens enheder/bygninger (vist som ★ i toppen), og bruger dem til at **låse powers op**. Artillery Barbage dukker altså ikke op efter 10 sekunder — den skal fortjenes. AI'en spiller efter samme regler.
+- **Rettet tab-betingelse:** du taber først når **alle** dine bygninger er væk — ikke ved tab af Command Center alene. Du kan nu overleve og komme igen selv uden hovedbasen.
+- **Sælg bygninger:** vælg en bygning og klik **SELL** (eller tryk **K**) for 50% refusion — nyttigt til at flytte base eller redde økonomien.
+- **Smartere AI:** går ikke længere passiv hvis dens Command Center falder — den kæmper videre fra sine øvrige bygninger og optjener/​bruger sine egne powers.
 
 ## Nyt i v0.4 — spil-dybde
 

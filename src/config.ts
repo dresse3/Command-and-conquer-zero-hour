@@ -274,6 +274,14 @@ export const POWERS: Record<PowerKind, PowerDef> = {
 
 export const POWER_ORDER: PowerKind[] = ["artillery", "airstrike", "reinforce"];
 
+// Promotion: earn XP by destroying enemy units/buildings; each threshold grants
+// one promotion point, spent to unlock a general power. Powers are NOT free.
+export const POWER_POINT_COST: Record<PowerKind, number> = { artillery: 1, airstrike: 2, reinforce: 1 };
+export const PROMO_THRESHOLDS = [120, 320, 640, 1100, 1700]; // cumulative XP per point
+
+// Refund fraction when selling a building
+export const SELL_REFUND = 0.5;
+
 export const COLORS = {
   player: "#3da9fc",
   playerDark: "#1b6fb0",

@@ -34,6 +34,21 @@ export function isInHud(py: number, canvasH: number): boolean {
   return py >= canvasH - HUD_HEIGHT;
 }
 
+// Sell button shown at the far-right of the build-button row when a building
+// is selected. Sits just left of the first power button.
+export function sellButtonRect(canvasW: number, canvasH: number) {
+  const w = 84;
+  const h = 30;
+  const powers = powerButtonRects(canvasW, canvasH);
+  const rightEdge = powers.length ? powers[0].x - 16 : canvasW - 220;
+  return { x: rightEdge - w, y: canvasH - HUD_HEIGHT + 14, w, h };
+}
+
+export function isInSellButton(px: number, py: number, canvasW: number, canvasH: number): boolean {
+  const r = sellButtonRect(canvasW, canvasH);
+  return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+}
+
 // ---- general power buttons (bottom bar, left of the minimap) ----
 export interface PowerRect {
   kind: PowerKind;

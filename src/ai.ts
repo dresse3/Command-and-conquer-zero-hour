@@ -1,10 +1,10 @@
-import { UNITS, type UnitKind } from "./config";
+import { UNITS, POWER_POINT_COST, type UnitKind } from "./config";
 import type { Building, Unit } from "./entities";
 import type { Game } from "./game";
 
 // A pragmatic opponent: keeps harvesters working, builds an army, defends its
-// base when threatened, rebuilds power, adds turrets, and uses its artillery
-// power on the player.
+// base when threatened, rebuilds power, adds turrets, earns promotion points
+// and uses its artillery power on the player.
 export class EnemyAI {
   private buildCd = 2;
   private attackCd = 28;
@@ -22,7 +22,8 @@ export class EnemyAI {
   }
 
   update(dt: number) {
-    const base = this.game.baseOf("enemy");
+    // anchor on the command center, but keep operating from any building
+    const base = this.game.baseOf("enemy") ?? this.game.anyBuilding("enemy");
     if (!base) return;
     this.buildCd -= dt;
     this.attackCd -= dt;
@@ -35,7 +36,17 @@ export class EnemyAI {
     const barracks = this.prod("barracks");
     const army = mine.filter((u) => u.def.damage > 0);
 
-    // --- economy / base upkeep (rebuild power, add turrets) ---
+    // spend promotion points on powers (artillery first, then reinforcements)
+    const pts = this.game.promoPoints["enemy"];
+    if (pts >= POWER_POINT_COST.artillery && !this.game.enemyPowers.isUnlocked("artillery")) {
+      this.game.promoPoints["enemy"] -= POWER_POINT_COST.artillery;
+      this.game.enemyPowers.unlock("artillery");
+    } else if (pts >= POWER_POINT_COST.reinforce && !this.game.enemyPowers.isUnlocked("reinforce")) {
+      this.game.promoPoints["enemy"] -= POWER_POINT_COST.reinforce;
+      this.game.enemyPowers.unlock("reinforce");
+    }
+
+    // economy / base upkeep
     if (this.economyCd <= 0) {
       this.economyCd = 5;
       if (this.game.power["enemy"] < 0) {
@@ -45,7 +56,7 @@ export class EnemyAI {
       }
     }
 
-    // --- production ---
+    // production
     if (this.buildCd <= 0) {
       this.buildCd = 3;
       const credits = this.game.credits["enemy"];
@@ -58,7 +69,7 @@ export class EnemyAI {
       }
     }
 
-    // --- defend: pull the army home if the player pushes into our base ---
+    // defend if the player pushes into our base, else attack in waves
     const threat = this.nearestPlayerThreat(base, 620);
     if (threat) {
       for (const u of army) {
@@ -66,9 +77,8 @@ export class EnemyAI {
         if (d > 260) u.moveTo(this.game, base.rally.x + (Math.random() - 0.5) * 80, base.rally.y, true);
       }
     } else if (this.attackCd <= 0) {
-      // --- attack in waves ---
       this.attackCd = 32;
-      const target = this.game.playerBase();
+      const target = this.game.playerBase() ?? this.game.anyBuilding("player");
       if (army.length >= 5 && target) {
         for (const u of army) {
           u.moveTo(this.game, target.x + (Math.random() - 0.5) * 150, target.y + (Math.random() - 0.5) * 150, true);
@@ -76,7 +86,7 @@ export class EnemyAI {
       }
     }
 
-    // --- superweapon: artillery on the player ---
+    // superweapon: artillery on the player
     if (this.powerCd <= 0 && this.game.enemyPowers.canFire("artillery")) {
       this.powerCd = 8;
       const tgt = this.bestArtilleryTarget();
@@ -98,7 +108,7 @@ export class EnemyAI {
     return best;
   }
 
-  // aim at the densest cluster of player combat units, else the player base
+  // aim at the densest cluster of player combat units, else any player building
   private bestArtilleryTarget(): { x: number; y: number } | null {
     const players = this.game.units.filter((u) => u.alive && u.team === "player" && u.def.damage > 0);
     if (players.length >= 4) {
@@ -114,7 +124,7 @@ export class EnemyAI {
       }
       if (bestCount >= 3) return { x: best.x, y: best.y };
     }
-    const pb = this.game.playerBase();
+    const pb = this.game.playerBase() ?? this.game.anyBuilding("player");
     return pb ? { x: pb.x, y: pb.y } : null;
   }
 
@@ -126,7 +136,7 @@ export class EnemyAI {
   }
 
   guard(newUnit: Unit) {
-    const base = this.game.baseOf("enemy");
+    const base = this.game.baseOf("enemy") ?? this.game.anyBuilding("enemy");
     if (!base || newUnit.def.canGather) return;
     newUnit.moveTo(this.game, base.rally.x, base.rally.y, true);
   }
