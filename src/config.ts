@@ -282,6 +282,79 @@ export const PROMO_THRESHOLDS = [120, 320, 640, 1100, 1700]; // cumulative XP pe
 // Refund fraction when selling a building
 export const SELL_REFUND = 0.5;
 
+// ---- Factions (asymmetric sides, inspired by Zero Hour's generals) ----
+export interface FactionDef {
+  id: string;
+  name: string;
+  blurb: string;
+  color: string; // menu accent
+  costMult: number; // unit cost
+  buildCostMult: number; // building cost
+  hpMult: number;
+  speedMult: number;
+  damageMult: number;
+  powerChargeMult: number; // <1 = powers recharge faster
+  artilleryBonus: number; // extra artillery strikes
+  artilleryDamageMult: number;
+  reinforceBonus: number; // extra reinforcement units
+  trait: string;
+}
+
+export const FACTIONS: FactionDef[] = [
+  {
+    id: "coalition",
+    name: "Vanguard Coalition",
+    blurb: "Balanced high-tech force",
+    color: "#3da9fc",
+    costMult: 1,
+    buildCostMult: 1,
+    hpMult: 1,
+    speedMult: 1,
+    damageMult: 1,
+    powerChargeMult: 0.8,
+    artilleryBonus: 0,
+    artilleryDamageMult: 1,
+    reinforceBonus: 0,
+    trait: "Rapid command: general powers recharge 20% faster.",
+  },
+  {
+    id: "legion",
+    name: "Iron Legion",
+    blurb: "Heavy armor & massed numbers",
+    color: "#ef8c3d",
+    costMult: 0.85,
+    buildCostMult: 0.9,
+    hpMult: 1.25,
+    speedMult: 0.9,
+    damageMult: 1,
+    powerChargeMult: 1.1,
+    artilleryBonus: 3,
+    artilleryDamageMult: 1.3,
+    reinforceBonus: 0,
+    trait: "Tougher, cheaper units and a devastating artillery barrage.",
+  },
+  {
+    id: "wolves",
+    name: "Desert Wolves",
+    blurb: "Cheap, fast guerrillas",
+    color: "#7ec46b",
+    costMult: 0.7,
+    buildCostMult: 0.85,
+    hpMult: 0.8,
+    speedMult: 1.2,
+    damageMult: 0.95,
+    powerChargeMult: 1,
+    artilleryBonus: 0,
+    artilleryDamageMult: 1,
+    reinforceBonus: 2,
+    trait: "Dirt-cheap, fast units and larger reinforcement drops.",
+  },
+];
+
+export function factionById(id: string): FactionDef {
+  return FACTIONS.find((f) => f.id === id) ?? FACTIONS[0];
+}
+
 export const COLORS = {
   player: "#3da9fc",
   playerDark: "#1b6fb0",

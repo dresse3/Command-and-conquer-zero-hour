@@ -1,8 +1,8 @@
-import { POWERS, POWER_ORDER, type PowerKind, type Team } from "./config";
+import { POWERS, POWER_ORDER, type PowerKind, type Team, type FactionDef } from "./config";
 import type { WorldApi } from "./types";
 
 type Active =
-  | { type: "strike"; x: number; y: number; t: number; team: Team }
+  | { type: "strike"; x: number; y: number; t: number; dmg: number; team: Team }
   | { type: "plane"; x: number; y: number; vx: number; life: number; dropCd: number; bombs: number; tx: number; team: Team };
 
 // One instance per team. Tracks cooldowns, executes powers, and owns the
@@ -12,9 +12,22 @@ export class PowerManager {
   unlocked = new Set<PowerKind>();
   private active: Active[] = [];
 
+  // faction traits
+  private chargeMult = 1;
+  private artilleryBonus = 0;
+  private artilleryDamageMult = 1;
+  private reinforceBonus = 0;
+
   constructor() {
     // start fully uncharged and locked — powers must be earned & unlocked
     for (const k of POWER_ORDER) this.ready[k] = POWERS[k].cooldown;
+  }
+
+  applyFaction(f: FactionDef) {
+    this.chargeMult = f.powerChargeMult;
+    this.artilleryBonus = f.artilleryBonus;
+    this.artilleryDamageMult = f.artilleryDamageMult;
+    this.reinforceBonus = f.reinforceBonus;
   }
 
   isUnlocked(kind: PowerKind): boolean {
@@ -36,14 +49,17 @@ export class PowerManager {
 
   fire(kind: PowerKind, x: number, y: number, world: WorldApi, team: Team): boolean {
     if (!this.canFire(kind)) return false;
-    this.ready[kind] = POWERS[kind].cooldown;
+    this.ready[kind] = POWERS[kind].cooldown * this.chargeMult;
     if (kind === "artillery") {
-      for (let i = 0; i < 9; i++) {
+      const strikes = 9 + this.artilleryBonus;
+      const dmg = 95 * this.artilleryDamageMult;
+      for (let i = 0; i < strikes; i++) {
         this.active.push({
           type: "strike",
           x: x + (Math.random() - 0.5) * 150,
           y: y + (Math.random() - 0.5) * 150,
           t: 0.12 * i + Math.random() * 0.15,
+          dmg,
           team,
         });
       }
@@ -51,8 +67,9 @@ export class PowerManager {
       this.active.push({ type: "plane", x: x - 760, y, vx: 620, life: 2.6, dropCd: 0, bombs: 5, tx: x, team });
     } else if (kind === "reinforce") {
       const kinds: ("ranger" | "rocketeer" | "raptor")[] = ["ranger", "ranger", "rocketeer", "raptor"];
+      for (let i = 0; i < this.reinforceBonus; i++) kinds.push("ranger");
       kinds.forEach((k, i) => {
-        world.spawnUnitAt(team, k, x + (i - 1.5) * 30, y + (i % 2) * 26);
+        world.spawnUnitAt(team, k, x + (i - kinds.length / 2) * 28, y + (i % 2) * 26);
       });
       world.effects.dust(x, y, 18);
       world.audio.ready();
@@ -69,7 +86,7 @@ export class PowerManager {
         if (a.t <= 0) {
           world.effects.explosion(a.x, a.y, 1.6);
           world.audio.explosion(0.7);
-          world.damageArea(a.x, a.y, 70, 95, a.team);
+          world.damageArea(a.x, a.y, 70, a.dmg, a.team);
           world.shake(6);
         }
       } else if (a.type === "plane") {

@@ -130,8 +130,9 @@ export class EnemyAI {
 
   private tryQueue(b: Building, kind: UnitKind, credits: number) {
     const def = UNITS[kind];
-    if (credits < def.cost) return;
-    this.game.credits["enemy"] -= def.cost;
+    const cost = this.game.unitCost(kind, "enemy");
+    if (credits < cost) return;
+    this.game.credits["enemy"] -= cost;
     b.enqueue(kind, def.buildTime);
   }
 

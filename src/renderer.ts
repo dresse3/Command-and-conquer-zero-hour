@@ -16,6 +16,11 @@ export class Renderer {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+    if (game.phase === "select") {
+      this.drawFactionSelect(game);
+      return;
+    }
+
     ctx.save();
     ctx.translate(game.camera.shakeX, game.camera.shakeY);
     ctx.scale(game.camera.zoom, game.camera.zoom);
@@ -488,6 +493,11 @@ export class Renderer {
     ctx.fillStyle = COLORS.enemy;
     ctx.fillText(`Hostiles: ${enemyArmy}`, 430, 21);
 
+    const pf = game.factions["player"];
+    ctx.fillStyle = pf.color;
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillText(`⚑ ${pf.name}`, 540, 21);
+
     ctx.fillStyle = "#94a3b8";
     ctx.textAlign = "right";
     ctx.fillText("Arrows/edges: pan · wheel: zoom · A: attack-move · Z/X/C: powers · K: sell · ★ = promotion points", W - 16, 21);
@@ -557,7 +567,11 @@ export class Renderer {
     h: number,
   ) {
     const def = entry.type === "unit" ? UNITS[entry.key as keyof typeof UNITS] : BUILDINGS[entry.key as keyof typeof BUILDINGS];
-    const affordable = game.credits["player"] >= def.cost;
+    const cost =
+      entry.type === "unit"
+        ? game.unitCost(entry.key as keyof typeof UNITS, "player")
+        : game.buildingCost(entry.key as keyof typeof BUILDINGS, "player");
+    const affordable = game.credits["player"] >= cost;
     ctx.fillStyle = affordable ? "rgba(61,169,252,0.18)" : "rgba(80,80,90,0.18)";
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = affordable ? "rgba(61,169,252,0.7)" : "rgba(120,120,130,0.5)";
@@ -569,7 +583,7 @@ export class Renderer {
     ctx.fillText(def.name, x + 7, y + 15);
     ctx.fillStyle = COLORS.supply;
     ctx.font = "12px system-ui, sans-serif";
-    ctx.fillText(`⛃ ${def.cost}`, x + 7, y + 34);
+    ctx.fillText(`⛃ ${cost}`, x + 7, y + 34);
     ctx.fillStyle = "#94a3b8";
     ctx.font = "10px system-ui, sans-serif";
     ctx.fillText(`[${entry.hotkey}] ${entry.type === "building" ? "structure" : "unit"}`, x + 7, y + 51);
@@ -722,6 +736,87 @@ export class Renderer {
     ctx.strokeStyle = "rgba(255,255,255,0.2)";
     ctx.lineWidth = 1;
     ctx.strokeRect(r.x, r.y, r.w, r.h);
+  }
+
+  private drawFactionSelect(game: Game) {
+    const ctx = this.ctx;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    ctx.fillStyle = "#0b0e14";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#e6c34a";
+    ctx.font = "bold 40px system-ui, sans-serif";
+    ctx.fillText("CHOOSE YOUR FACTION", W / 2, H / 2 - 240);
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillText("Each side plays differently. Your enemy will take one of the others.", W / 2, H / 2 - 210);
+
+    for (const c of game.factionCardRects(W, H)) {
+      const f = c.f;
+      ctx.fillStyle = "rgba(255,255,255,0.04)";
+      ctx.fillRect(c.x, c.y, c.w, c.h);
+      ctx.strokeStyle = f.color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(c.x, c.y, c.w, c.h);
+      // color banner
+      ctx.fillStyle = f.color;
+      ctx.fillRect(c.x, c.y, c.w, 8);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = f.color;
+      ctx.font = "bold 24px system-ui, sans-serif";
+      ctx.fillText(f.name, c.x + c.w / 2, c.y + 52);
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "italic 14px system-ui, sans-serif";
+      ctx.fillText(f.blurb, c.x + c.w / 2, c.y + 78);
+
+      ctx.textAlign = "left";
+      ctx.font = "13px system-ui, sans-serif";
+      ctx.fillStyle = "#e2e8f0";
+      const stats = [
+        `Unit cost:  ${this.pct(f.costMult)}`,
+        `Build cost: ${this.pct(f.buildCostMult)}`,
+        `Health:     ${this.pct(f.hpMult)}`,
+        `Speed:      ${this.pct(f.speedMult)}`,
+        `Damage:     ${this.pct(f.damageMult)}`,
+      ];
+      stats.forEach((s, i) => ctx.fillText(s, c.x + 22, c.y + 120 + i * 26));
+
+      ctx.fillStyle = f.color;
+      ctx.font = "bold 12px system-ui, sans-serif";
+      this.wrapText(ctx, f.trait, c.x + 22, c.y + 262, c.w - 44, 17);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = f.color;
+      ctx.font = "bold 15px system-ui, sans-serif";
+      ctx.fillText("▶ CLICK TO PLAY", c.x + c.w / 2, c.y + c.h - 16);
+    }
+    ctx.textAlign = "left";
+  }
+
+  private pct(m: number): string {
+    const d = Math.round((m - 1) * 100);
+    return d === 0 ? "standard" : d > 0 ? `+${d}%` : `${d}%`;
+  }
+
+  private wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lh: number) {
+    const words = text.split(" ");
+    let line = "";
+    let yy = y;
+    for (const w of words) {
+      const test = line ? line + " " + w : w;
+      if (ctx.measureText(test).width > maxW && line) {
+        ctx.fillText(line, x, yy);
+        line = w;
+        yy += lh;
+      } else {
+        line = test;
+      }
+    }
+    if (line) ctx.fillText(line, x, yy);
   }
 
   private drawEndScreen(game: Game) {

@@ -61,6 +61,11 @@ export class Unit {
   kills = 0;
   rank = 0; // 0 rookie, 1 veteran, 2 elite
 
+  // faction stat multipliers (assigned by the game on spawn)
+  hpMult = 1;
+  speedMult = 1;
+  dmgMult = 1;
+
   constructor(public team: Team, public kind: UnitKind, x: number, y: number) {
     this.def = UNITS[kind];
     this.hp = this.def.maxHp;
@@ -70,11 +75,15 @@ export class Unit {
   }
 
   get maxHp() {
-    return this.def.maxHp * VET_HP[this.rank];
+    return this.def.maxHp * VET_HP[this.rank] * this.hpMult;
+  }
+
+  get speed() {
+    return this.def.speed * this.speedMult;
   }
 
   get currentDamage() {
-    return this.def.damage * VET_DAMAGE[this.rank];
+    return this.def.damage * VET_DAMAGE[this.rank] * this.dmgMult;
   }
 
   addKill() {
@@ -266,7 +275,7 @@ export class Unit {
     const moved = Math.hypot(this.x - this.lastX, this.y - this.lastY);
     this.lastX = this.x;
     this.lastY = this.y;
-    if (moved < this.def.speed * 0.5 * 0.3) {
+    if (moved < this.speed * 0.5 * 0.3) {
       this.stuckTime += 0.5;
     } else {
       this.stuckTime = 0;
@@ -311,7 +320,7 @@ export class Unit {
     vx /= vl;
     vy /= vl;
 
-    const step = this.def.speed * dt;
+    const step = this.speed * dt;
     this.x += vx * step;
     this.y += vy * step;
     this.angle = Math.atan2(vy, vx);

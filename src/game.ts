@@ -21,7 +21,17 @@ import { ParticleSystem } from "./effects";
 import { Sfx } from "./audio";
 import { VisibilityMap } from "./fog";
 import { PowerManager } from "./powers";
-import { POWERS, POWER_ORDER, POWER_POINT_COST, PROMO_THRESHOLDS, SELL_REFUND, type PowerKind } from "./config";
+import {
+  POWERS,
+  POWER_ORDER,
+  POWER_POINT_COST,
+  PROMO_THRESHOLDS,
+  SELL_REFUND,
+  FACTIONS,
+  factionById,
+  type PowerKind,
+  type FactionDef,
+} from "./config";
 import { hudHitTest, isInHud, isInMinimap, minimapToWorld, powerHitTest, isInSellButton } from "./hud";
 import type { Vec, WorldApi } from "./types";
 import { dist2 } from "./types";
@@ -59,21 +69,55 @@ export class Game implements WorldApi, InputHandlers {
   private promoGiven: Record<string, number> = { player: 0, enemy: 0 };
 
   status: GameStatus = "playing";
+  phase: "select" | "playing" = "select";
+  factions: Record<string, FactionDef> = { player: FACTIONS[0], enemy: FACTIONS[1] };
   toast = "";
   private toastCd = 0;
 
-  private ai: EnemyAI;
+  private ai: EnemyAI | null = null;
   input: Input;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.input = new Input(canvas, this);
+    this.camera.resize(canvas.width, canvas.height);
+  }
+
+  // Called from the faction-select screen to begin a match.
+  startGame(playerFactionId: string) {
+    const pf = factionById(playerFactionId);
+    const others = FACTIONS.filter((f) => f.id !== pf.id);
+    const ef = others[Math.floor(Math.random() * others.length)];
+    this.factions = { player: pf, enemy: ef };
+    this.playerPowers = new PowerManager();
+    this.playerPowers.applyFaction(pf);
+    this.enemyPowers = new PowerManager();
+    this.enemyPowers.applyFaction(ef);
     this.setup();
     this.ai = new EnemyAI(this);
-    this.camera.resize(canvas.width, canvas.height);
     const base = this.baseOf("player");
     if (base) this.camera.centerOn(base.x, base.y);
     this.recalcPower();
     this.updateFog();
+    this.phase = "playing";
+    this.showToast(`${pf.name} vs ${ef.name} — ${pf.trait}`);
+  }
+
+  // Layout for the three faction cards on the select screen.
+  factionCardRects(canvasW: number, canvasH: number) {
+    const w = 300;
+    const h = 320;
+    const gap = 30;
+    const total = FACTIONS.length * w + (FACTIONS.length - 1) * gap;
+    const startX = (canvasW - total) / 2;
+    const y = (canvasH - h) / 2;
+    return FACTIONS.map((f, i) => ({ f, x: startX + i * (w + gap), y, w, h }));
+  }
+
+  private factionCardAt(px: number, py: number): string | null {
+    for (const c of this.factionCardRects(this.canvas.width, this.canvas.height)) {
+      if (px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h) return c.f.id;
+    }
+    return null;
   }
 
   // ---------------- setup ----------------
@@ -146,8 +190,21 @@ export class Game implements WorldApi, InputHandlers {
 
   private spawnUnit(team: Team, kind: UnitKind, x: number, y: number): Unit {
     const u = new Unit(team, kind, x, y);
+    const f = this.factions[team];
+    u.hpMult = f.hpMult;
+    u.speedMult = f.speedMult;
+    u.dmgMult = f.damageMult;
+    u.hp = u.maxHp; // apply faction HP bonus to starting health
     this.units.push(u);
     return u;
+  }
+
+  unitCost(kind: UnitKind, team: Team): number {
+    return Math.round(UNITS[kind].cost * this.factions[team].costMult);
+  }
+
+  buildingCost(kind: BuildingKind, team: Team): number {
+    return Math.round(BUILDINGS[kind].cost * this.factions[team].buildCostMult);
   }
 
   // ---------------- WorldApi ----------------
@@ -180,10 +237,10 @@ export class Game implements WorldApi, InputHandlers {
 
   // Used by the AI to place a structure on a free tile near its command center.
   tryAiBuild(team: Team, kind: BuildingKind): boolean {
-    const base = this.baseOf(team);
+    const base = this.baseOf(team) ?? this.anyBuilding(team);
     if (!base) return false;
-    const def = BUILDINGS[kind];
-    if (this.credits[team] < def.cost) return false;
+    const cost = this.buildingCost(kind, team);
+    if (this.credits[team] < cost) return false;
     const bt = this.grid.worldToTile(base.x, base.y);
     for (let ring = 2; ring < 9; ring++) {
       for (let dy = -ring; dy <= ring; dy++) {
@@ -192,7 +249,7 @@ export class Game implements WorldApi, InputHandlers {
           const tx = bt.tx + dx;
           const ty = bt.ty + dy;
           if (this.canPlace(kind, tx, ty, team)) {
-            this.credits[team] -= def.cost;
+            this.credits[team] -= cost;
             this.placeStructure(team, kind, tx, ty);
             this.recalcPower();
             return true;
@@ -321,6 +378,11 @@ export class Game implements WorldApi, InputHandlers {
   // ---------------- input handlers ----------------
   onSelect(rect: { x: number; y: number; w: number; h: number }, additive: boolean) {
     this.audio.unlock();
+    if (this.phase === "select") {
+      const id = this.factionCardAt(rect.x + rect.w / 2, rect.y + rect.h / 2);
+      if (id) this.startGame(id);
+      return;
+    }
     const cx = rect.x + rect.w / 2;
     const cy = rect.y + rect.h / 2;
     const isClick = rect.w < 6 && rect.h < 6;
@@ -414,6 +476,7 @@ export class Game implements WorldApi, InputHandlers {
 
   onCommand(sx: number, sy: number, _additive: boolean) {
     this.audio.unlock();
+    if (this.phase === "select") return;
     if (this.placement) {
       this.placement = null;
       this.showToast("Placement cancelled");
@@ -466,6 +529,7 @@ export class Game implements WorldApi, InputHandlers {
 
   onHotkey(key: string) {
     this.audio.unlock();
+    if (this.phase === "select") return;
     if (key === "a" && !this.placement) {
       if (this.selected.some((u) => u.def.damage > 0)) {
         this.pendingAttackMove = true;
@@ -617,7 +681,7 @@ export class Game implements WorldApi, InputHandlers {
     if (this.status !== "playing") return;
     if (entry.type === "building") {
       const def = BUILDINGS[entry.key as BuildingKind];
-      if (this.credits["player"] < def.cost) {
+      if (this.credits["player"] < this.buildingCost(entry.key as BuildingKind, "player")) {
         this.showToast("Not enough credits");
         return;
       }
@@ -636,7 +700,8 @@ export class Game implements WorldApi, InputHandlers {
       return;
     }
     const def = UNITS[entry.key as UnitKind];
-    if (this.credits["player"] < def.cost) {
+    const cost = this.unitCost(entry.key as UnitKind, "player");
+    if (this.credits["player"] < cost) {
       this.showToast("Not enough credits");
       return;
     }
@@ -644,7 +709,7 @@ export class Game implements WorldApi, InputHandlers {
       this.showToast("Queue full");
       return;
     }
-    this.credits["player"] -= def.cost;
+    this.credits["player"] -= cost;
     b.enqueue(entry.key as UnitKind, def.buildTime);
     this.audio.build();
     this.showToast(`Queued ${def.name}`);
@@ -682,12 +747,13 @@ export class Game implements WorldApi, InputHandlers {
       this.showToast("Can't build there");
       return;
     }
-    if (this.credits["player"] < def.cost) {
+    const cost = this.buildingCost(kind, "player");
+    if (this.credits["player"] < cost) {
       this.showToast("Not enough credits");
       this.placement = null;
       return;
     }
-    this.credits["player"] -= def.cost;
+    this.credits["player"] -= cost;
     const nb = this.placeStructure("player", kind, tx, ty);
     this.recalcPower();
     this.effects.dust(nb.x, nb.y, 14);
@@ -703,6 +769,7 @@ export class Game implements WorldApi, InputHandlers {
 
   // ---------------- main update ----------------
   update(dt: number) {
+    if (this.phase !== "playing") return;
     this.updateCamera(dt);
     this.camera.updateShake(dt);
     this.effects.update(dt);
@@ -725,14 +792,14 @@ export class Game implements WorldApi, InputHandlers {
         const spawn = this.freeSpawnNear(b);
         const u = this.spawnUnit(b.team, finished, spawn.x, spawn.y);
         u.moveTo(this, b.rally.x, b.rally.y, b.team === "enemy");
-        if (b.team === "enemy") this.ai.guard(u);
+        if (b.team === "enemy") this.ai?.guard(u);
         if (b.team === "player") this.audio.ready();
       }
     }
 
     for (const u of this.units) u.update(dt, this);
     for (const p of this.projectiles) p.update(dt, this);
-    this.ai.update(dt);
+    this.ai?.update(dt);
 
     // cleanup — dead entities emit an explosion once as they are removed;
     // the opposing team earns promotion XP for the kill.
@@ -786,7 +853,7 @@ export class Game implements WorldApi, InputHandlers {
       this.showToast("Select your building to sell");
       return;
     }
-    const refund = Math.round(b.def.cost * SELL_REFUND);
+    const refund = Math.round(this.buildingCost(b.kind, "player") * SELL_REFUND);
     this.credits["player"] += refund;
     // remove directly (no explosion / no enemy XP, unlike being destroyed)
     b.alive = false;

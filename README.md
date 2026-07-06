@@ -41,6 +41,18 @@ npm run preview
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
 | **Esc** | Annullér placering / power / fjern markering |
 
+## Nyt i v0.6 — faktioner
+
+Vælg en af tre asymmetriske faktioner før kampen (fjenden får en af de andre):
+
+| Faktion | Stil | Signatur |
+|---------|------|----------|
+| **Vanguard Coalition** | Balanceret højteknologi | Powers oplades 20% hurtigere |
+| **Iron Legion** | Tungt panser, billige masser | +25% HP, billigere enheder, knusende artilleri |
+| **Desert Wolves** | Billige, hurtige guerillaer | −30% pris, +20% fart, større reinforcements |
+
+Faktionen justerer enheders pris, HP, fart og skade, bygningspriser og general-power-bonusser — så de tre sider spiller mærkbart forskelligt. Din valgte faktion vises i HUD'en.
+
 ## Nyt i v0.5 — finpudsning & balance
 
 - **Promotion points:** general powers er ikke længere gratis. Du optjener point ved at ødelægge fjendens enheder/bygninger (vist som ★ i toppen), og bruger dem til at **låse powers op**. Artillery Barbage dukker altså ikke op efter 10 sekunder — den skal fortjenes. AI'en spiller efter samme regler.
@@ -115,7 +127,8 @@ src/
 - [x] General powers / superweapons
 - [x] Veterangrader for enheder
 - [x] Smartere AI (rebuild, forsvar, brug af powers)
-- [ ] Faktions-asymmetri (flere spilbare sider)
+- [x] Faktions-asymmetri (tre spilbare sider)
+- [ ] Flere unikke enheder/bygninger pr. faktion
 - [ ] AI-genererede sprites (foto-realistisk løft)
 - [ ] Pak som desktop-app (Tauri/Electron) for native Win/Mac
 
