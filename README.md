@@ -39,6 +39,16 @@ npm run preview
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
 | **Esc** | Annullér placering / fjern markering |
 
+## Nyt i v0.4 — spil-dybde
+
+- **Fog of war:** kortet starter uudforsket; dine enheder/bygninger afslører terræn. Fjender skjules uden for dit synsfelt, og du "husker" udforskede områder i tåge
+- **General Powers / superweapons** (oplades over tid, aktiveres via HUD-knapper eller Z/X/C):
+  - **Artillery Barrage** — regn af granater over et målområde
+  - **Airstrike** — jetjager stryger hen over målet og bomber
+  - **Reinforcements** — tilkald en gruppe enheder øjeblikkeligt
+- **Veterangrader:** enheder der dræber fjender stiger i rang (rookie → veteran → elite) med bonus til skade, HP og selvhealing — vist med chevroner
+- **Smartere AI:** genopbygger strøm, bygger forsvarstårne, forsvarer basen når du angriber, og bruger sin egen artilleri-power mod dine styrker
+
 ## Nyt i v0.3 — grafik & lyd
 
 - **Ørkengrafik:** sandpalette med procedurel terræn-variation, klippeformationer og skygger under alle enheder/bygninger
@@ -72,8 +82,13 @@ src/
   grid.ts        Tile-grid + A* pathfinding
   camera.ts      Pan / zoom / world<->screen
   input.ts       Mus + tastatur, selection box
-  entities.ts    Unit, Building, SupplyField, Projectile
+  entities.ts    Unit, Building, SupplyField, Projectile (+ veterancy)
   ai.ts          Fjendens beslutningslogik
+  fog.ts         Synlighedskort (fog of war)
+  powers.ts      General powers / superweapons
+  effects.ts     Partikelsystem
+  audio.ts       Syntetiseret lyd (Web Audio)
+  hud.ts         HUD-layout, knap-hittest, minimap-mapping
   game.ts        Orkestrering: state, update, kommandoer, økonomi, win/lose
   renderer.ts    Al tegning + HUD
   types.ts       Delte typer og WorldApi-interface
@@ -87,10 +102,12 @@ src/
 - [x] Gruppe-hotkeys (Ctrl+1-9) og attack-move (A)
 - [x] Partikeleffekter, camera shake og syntetiseret lyd
 - [x] Ørkengrafik med skygger og detaljerede enheder/bygninger
-- [ ] Fog of war
-- [ ] Faktions-asymmetri og "general powers" / superweapons
+- [x] Fog of war
+- [x] General powers / superweapons
+- [x] Veterangrader for enheder
+- [x] Smartere AI (rebuild, forsvar, brug af powers)
+- [ ] Faktions-asymmetri (flere spilbare sider)
 - [ ] AI-genererede sprites (foto-realistisk løft)
-- [ ] Smartere AI (rebuild, tech-op, angreb på svage punkter)
 - [ ] Pak som desktop-app (Tauri/Electron) for native Win/Mac
 
 ## Licens

@@ -249,6 +249,31 @@ export const BUILD_RADIUS = TILE * 7; // how far from own buildings you may plac
 
 export const START_CREDITS = 2000;
 
+// Veterancy: index 0 rookie, 1 veteran, 2 elite
+export const VET_KILLS = [2, 5]; // kills needed to reach veteran, then elite
+export const VET_DAMAGE = [1, 1.25, 1.55];
+export const VET_HP = [1, 1.25, 1.5];
+export const VET_REGEN = [0, 5, 11]; // hp per second (0 = no regen)
+
+// General Powers / superweapons
+export type PowerKind = "artillery" | "airstrike" | "reinforce";
+
+export interface PowerDef {
+  kind: PowerKind;
+  name: string;
+  hotkey: string;
+  cooldown: number; // seconds to recharge
+  startCharge: number; // seconds already charged at game start
+}
+
+export const POWERS: Record<PowerKind, PowerDef> = {
+  artillery: { kind: "artillery", name: "Artillery Barrage", hotkey: "Z", cooldown: 50, startCharge: 25 },
+  airstrike: { kind: "airstrike", name: "Airstrike", hotkey: "X", cooldown: 65, startCharge: 20 },
+  reinforce: { kind: "reinforce", name: "Reinforcements", hotkey: "C", cooldown: 80, startCharge: 30 },
+};
+
+export const POWER_ORDER: PowerKind[] = ["artillery", "airstrike", "reinforce"];
+
 export const COLORS = {
   player: "#3da9fc",
   playerDark: "#1b6fb0",

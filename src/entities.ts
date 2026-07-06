@@ -4,6 +4,10 @@ import {
   TILE,
   GATHER_AMOUNT,
   GATHER_TIME,
+  VET_KILLS,
+  VET_DAMAGE,
+  VET_HP,
+  VET_REGEN,
   type Team,
   type UnitKind,
   type BuildingKind,
@@ -53,6 +57,10 @@ export class Unit {
   gatherTimer = 0;
   fieldTarget: SupplyField | null = null;
 
+  // veterancy
+  kills = 0;
+  rank = 0; // 0 rookie, 1 veteran, 2 elite
+
   constructor(public team: Team, public kind: UnitKind, x: number, y: number) {
     this.def = UNITS[kind];
     this.hp = this.def.maxHp;
@@ -62,7 +70,20 @@ export class Unit {
   }
 
   get maxHp() {
-    return this.def.maxHp;
+    return this.def.maxHp * VET_HP[this.rank];
+  }
+
+  get currentDamage() {
+    return this.def.damage * VET_DAMAGE[this.rank];
+  }
+
+  addKill() {
+    this.kills++;
+    const newRank = this.kills >= VET_KILLS[1] ? 2 : this.kills >= VET_KILLS[0] ? 1 : 0;
+    if (newRank > this.rank) {
+      this.rank = newRank;
+      this.hp = this.maxHp; // promotion fully heals & raises the cap
+    }
   }
 
   takeDamage(amount: number) {
@@ -110,6 +131,10 @@ export class Unit {
     if (!this.alive) return;
     this.fireCd -= dt;
     this.repathCd -= dt;
+
+    if (this.rank > 0 && this.hp < this.maxHp) {
+      this.hp = Math.min(this.maxHp, this.hp + VET_REGEN[this.rank] * dt);
+    }
 
     switch (this.state) {
       case "idle":
@@ -170,7 +195,7 @@ export class Unit {
       this.path = [];
       this.turretAngle = Math.atan2(t.y - this.y, t.x - this.x);
       if (this.fireCd <= 0) {
-        world.spawnProjectile({ x: this.x, y: this.y }, t, this.def.damage, this.team, this.def.splash);
+        world.spawnProjectile({ x: this.x, y: this.y }, t, this.currentDamage, this.team, this.def.splash, this);
         this.fireCd = 1 / this.def.fireRate;
       }
     }
@@ -391,7 +416,7 @@ export class Building {
             x: this.x + Math.cos(this.aimAngle) * this.radius,
             y: this.y + Math.sin(this.aimAngle) * this.radius,
           };
-          world.spawnProjectile(muzzle, enemy, this.def.damage, this.team, 0);
+          world.spawnProjectile(muzzle, enemy, this.def.damage, this.team, 0, null);
           this.fireCd = 1 / this.def.fireRate;
         }
       }
@@ -445,6 +470,7 @@ export class Projectile {
     public damage: number,
     public team: Team,
     public splash: number,
+    public owner: Unit | null,
   ) {
     this.x = from.x;
     this.y = from.y;
@@ -472,19 +498,27 @@ export class Projectile {
     const ix = this.target.x;
     const iy = this.target.y;
     if (this.splash <= 0) {
+      const wasAlive = this.target.alive;
       this.target.takeDamage(this.damage);
+      if (wasAlive && !this.target.alive && this.owner && this.owner.alive) this.owner.addKill();
       world.effects.hit(ix, iy);
       return;
     }
     world.effects.explosion(ix, iy, 1.1);
     world.audio.explosion(0.4);
     const r2 = this.splash * this.splash;
+    let kills = 0;
     for (const u of world.units) {
       if (!u.alive || u.team === this.team) continue;
       const dx = u.x - ix;
       const dy = u.y - iy;
-      if (dx * dx + dy * dy <= r2) u.takeDamage(this.damage);
+      if (dx * dx + dy * dy <= r2) {
+        const wasAlive = u.alive;
+        u.takeDamage(this.damage);
+        if (wasAlive && !u.alive) kills++;
+      }
     }
+    if (this.owner && this.owner.alive) for (let i = 0; i < kills; i++) this.owner.addKill();
     for (const b of world.buildings) {
       if (!b.alive || b.team === this.team) continue;
       const dx = b.x - ix;

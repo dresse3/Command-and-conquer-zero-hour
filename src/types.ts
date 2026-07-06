@@ -18,11 +18,14 @@ export interface WorldApi {
   supplyFields: SupplyField[];
   effects: ParticleSystem;
   audio: Sfx;
-  spawnProjectile(from: Vec, target: Unit | Building, damage: number, team: Team, splash: number): void;
+  spawnProjectile(from: Vec, target: Unit | Building, damage: number, team: Team, splash: number, owner: Unit | null): void;
   findNearestEnemy(x: number, y: number, team: Team, withinSight: number): Unit | Building | null;
   findNearestSupply(x: number, y: number): SupplyField | null;
   nearestDropOff(x: number, y: number, team: Team): Building | null;
   addCredits(team: Team, amount: number): void;
+  damageArea(x: number, y: number, radius: number, amount: number, casterTeam: Team): void;
+  spawnUnitAt(team: Team, kind: import("./config").UnitKind, x: number, y: number): void;
+  shake(mag: number): void;
 }
 
 export function dist(a: Vec, b: Vec): number {

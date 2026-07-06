@@ -1,7 +1,7 @@
-import { TILE, COLORS, UNITS, BUILDINGS, type BuildEntry } from "./config";
+import { TILE, COLORS, UNITS, BUILDINGS, POWERS, type BuildEntry } from "./config";
 import type { Game } from "./game";
 import { Unit, Building } from "./entities";
-import { buttonRects, HUD_HEIGHT, minimapRect, worldToMinimap } from "./hud";
+import { buttonRects, powerButtonRects, HUD_HEIGHT, minimapRect, worldToMinimap } from "./hud";
 
 export class Renderer {
   ctx: CanvasRenderingContext2D;
@@ -23,11 +23,24 @@ export class Renderer {
 
     this.drawTerrain(game);
     this.drawSupply(game);
+    this.drawFog(game);
     if (game.selectedBuilding) this.drawRally(game.selectedBuilding);
-    for (const b of game.buildings) this.drawBuilding(ctx, b);
-    for (const u of game.units) this.drawUnit(ctx, u);
+    for (const b of game.buildings) {
+      if (b.team === "enemy") {
+        if (!game.fog.isExploredWorld(b.x, b.y)) continue;
+        ctx.globalAlpha = game.fog.isVisibleWorld(b.x, b.y) ? 1 : 0.5;
+      }
+      this.drawBuilding(ctx, b);
+      ctx.globalAlpha = 1;
+    }
+    for (const u of game.units) {
+      if (u.team === "enemy" && !game.fog.isVisibleWorld(u.x, u.y)) continue;
+      this.drawUnit(ctx, u);
+    }
     this.drawProjectiles(game);
     game.effects.draw(ctx);
+    game.playerPowers.draw(ctx);
+    game.enemyPowers.draw(ctx);
     if (game.placement) this.drawPlacementGhost(game);
 
     ctx.restore();
@@ -35,6 +48,7 @@ export class Renderer {
     this.drawSelectionBox(game);
     this.drawHud(game);
     this.drawMinimap(game);
+    if (game.pendingPower) this.drawPowerReticle(game);
     if (game.status !== "playing") this.drawEndScreen(game);
   }
 
@@ -92,9 +106,26 @@ export class Renderer {
     }
   }
 
+  private drawFog(game: Game) {
+    const ctx = this.ctx;
+    const cam = game.camera;
+    const x0 = Math.max(0, Math.floor(cam.x / TILE));
+    const y0 = Math.max(0, Math.floor(cam.y / TILE));
+    const x1 = Math.min(game.grid.w, Math.ceil((cam.x + cam.viewW / cam.zoom) / TILE));
+    const y1 = Math.min(game.grid.h, Math.ceil((cam.y + cam.viewH / cam.zoom) / TILE));
+    for (let ty = y0; ty < y1; ty++) {
+      for (let tx = x0; tx < x1; tx++) {
+        if (game.fog.isVisibleTile(tx, ty)) continue;
+        ctx.fillStyle = game.fog.isExploredTile(tx, ty) ? "rgba(0,0,0,0.5)" : "rgba(4,6,10,1)";
+        ctx.fillRect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
+      }
+    }
+  }
+
   private drawSupply(game: Game) {
     const ctx = this.ctx;
     for (const f of game.supplyFields) {
+      if (!game.fog.isExploredWorld(f.x, f.y)) continue;
       const frac = Math.max(0.25, f.remaining / 4000);
       const r = f.radius * frac;
       this.shadow(ctx, f.x, f.y + 4, r * 0.7, r * 0.4);
@@ -346,6 +377,20 @@ export class Renderer {
 
     const frac = u.hp / u.maxHp;
     if (frac < 1) this.hpBar(ctx, u.x, u.y - u.radius - 8, u.radius * 2 + 6, frac, true);
+
+    if (u.rank > 0) {
+      const cyc = u.y - u.radius - (frac < 1 ? 15 : 9);
+      ctx.strokeStyle = u.rank === 2 ? "#ffd23f" : "#e2e8f0";
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < u.rank; i++) {
+        const yy = cyc - i * 3.5;
+        ctx.beginPath();
+        ctx.moveTo(u.x - 4, yy);
+        ctx.lineTo(u.x, yy - 3);
+        ctx.lineTo(u.x + 4, yy);
+        ctx.stroke();
+      }
+    }
   }
 
   private drawProjectiles(game: Game) {
@@ -440,7 +485,7 @@ export class Renderer {
 
     ctx.fillStyle = "#94a3b8";
     ctx.textAlign = "right";
-    ctx.fillText("Arrows/edges: pan · wheel: zoom · click building to build · A: attack-move · Ctrl+1-9: groups", W - 16, 21);
+    ctx.fillText("Arrows/edges: pan · wheel: zoom · click building to build · A: attack-move · Z/X/C: powers", W - 16, 21);
     ctx.textAlign = "left";
 
     ctx.fillStyle = "rgba(10,12,16,0.92)";
@@ -482,6 +527,8 @@ export class Renderer {
       }
     }
 
+    this.drawPowerButtons(game);
+
     if (game.toast) {
       ctx.font = "bold 15px system-ui, sans-serif";
       const tw = ctx.measureText(game.toast).width + 24;
@@ -522,6 +569,58 @@ export class Renderer {
     ctx.fillText(`[${entry.hotkey}] ${entry.type === "building" ? "structure" : "unit"}`, x + 7, y + 51);
   }
 
+  private drawPowerButtons(game: Game) {
+    const ctx = this.ctx;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    for (const r of powerButtonRects(W, H)) {
+      const def = POWERS[r.kind];
+      const frac = game.playerPowers.chargeFrac(r.kind);
+      const ready = frac >= 1;
+      ctx.fillStyle = ready ? "rgba(230,195,74,0.18)" : "rgba(50,54,64,0.4)";
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = "rgba(230,195,74,0.28)";
+      ctx.fillRect(r.x, r.y + r.h * (1 - frac), r.w, r.h * frac);
+      if (game.pendingPower === r.kind) {
+        ctx.strokeStyle = "#7CFC00";
+        ctx.lineWidth = 2.5;
+      } else {
+        ctx.strokeStyle = ready ? "#e6c34a" : "rgba(120,120,130,0.6)";
+        ctx.lineWidth = 1.5;
+      }
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.textAlign = "left";
+      ctx.fillStyle = ready ? "#fff7e0" : "#9aa0aa";
+      ctx.font = "bold 12px system-ui, sans-serif";
+      const words = def.name.split(" ");
+      ctx.fillText(words[0], r.x + 7, r.y + 15);
+      if (words[1]) ctx.fillText(words.slice(1).join(" "), r.x + 7, r.y + 29);
+      ctx.fillStyle = ready ? "#e6c34a" : "#94a3b8";
+      ctx.font = "10px system-ui, sans-serif";
+      ctx.fillText(ready ? `[${def.hotkey}] READY` : `${Math.ceil((1 - frac) * def.cooldown)}s`, r.x + 7, r.y + 50);
+    }
+  }
+
+  private drawPowerReticle(game: Game) {
+    const ctx = this.ctx;
+    const mx = game.input.mouseX;
+    const my = game.input.mouseY;
+    ctx.strokeStyle = "rgba(255,80,80,0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(mx, my, 24, 0, Math.PI * 2);
+    ctx.moveTo(mx - 34, my);
+    ctx.lineTo(mx + 34, my);
+    ctx.moveTo(mx, my - 34);
+    ctx.lineTo(mx, my + 34);
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 12px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(POWERS[game.pendingPower!].name, mx, my - 38);
+    ctx.textAlign = "left";
+  }
+
   private drawMinimap(game: Game) {
     const ctx = this.ctx;
     const W = this.canvas.width;
@@ -536,22 +635,33 @@ export class Renderer {
     const sy = r.h / game.grid.h;
     for (let ty = 0; ty < game.grid.h; ty += step) {
       for (let tx = 0; tx < game.grid.w; tx += step) {
-        const c = game.grid.cell(tx, ty)!;
-        ctx.fillStyle = c.terrain === 2 ? COLORS.rock : c.terrain === 1 ? COLORS.dirt : COLORS.grass;
+        if (!game.fog.isExploredTile(tx, ty)) {
+          ctx.fillStyle = "#05070b";
+        } else {
+          const c = game.grid.cell(tx, ty)!;
+          ctx.fillStyle = c.terrain === 2 ? COLORS.rock : c.terrain === 1 ? COLORS.dirt : COLORS.grass;
+        }
         ctx.fillRect(r.x + tx * sx, r.y + ty * sy, sx * step + 1, sy * step + 1);
+        if (game.fog.isExploredTile(tx, ty) && !game.fog.isVisibleTile(tx, ty)) {
+          ctx.fillStyle = "rgba(0,0,0,0.4)";
+          ctx.fillRect(r.x + tx * sx, r.y + ty * sy, sx * step + 1, sy * step + 1);
+        }
       }
     }
     for (const f of game.supplyFields) {
+      if (!game.fog.isExploredWorld(f.x, f.y)) continue;
       const p = worldToMinimap(f.x, f.y, W, H);
       ctx.fillStyle = COLORS.supply;
       ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
     }
     for (const b of game.buildings) {
+      if (b.team === "enemy" && !game.fog.isExploredWorld(b.x, b.y)) continue;
       const p = worldToMinimap(b.x, b.y, W, H);
       ctx.fillStyle = b.team === "player" ? COLORS.player : COLORS.enemy;
       ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
     }
     for (const u of game.units) {
+      if (u.team === "enemy" && !game.fog.isVisibleWorld(u.x, u.y)) continue;
       const p = worldToMinimap(u.x, u.y, W, H);
       ctx.fillStyle = u.team === "player" ? "#bfe4ff" : "#ffc2cd";
       ctx.fillRect(p.x - 1, p.y - 1, 2, 2);

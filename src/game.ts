@@ -19,7 +19,10 @@ import { Unit, Building, SupplyField, Projectile, type Target } from "./entities
 import { EnemyAI } from "./ai";
 import { ParticleSystem } from "./effects";
 import { Sfx } from "./audio";
-import { hudHitTest, isInHud, isInMinimap, minimapToWorld } from "./hud";
+import { VisibilityMap } from "./fog";
+import { PowerManager } from "./powers";
+import { POWERS, POWER_ORDER, type PowerKind } from "./config";
+import { hudHitTest, isInHud, isInMinimap, minimapToWorld, powerHitTest } from "./hud";
 import type { Vec, WorldApi } from "./types";
 import { dist2 } from "./types";
 
@@ -43,6 +46,12 @@ export class Game implements WorldApi, InputHandlers {
 
   placement: BuildingKind | null = null;
   pendingAttackMove = false;
+  pendingPower: PowerKind | null = null;
+
+  fog = new VisibilityMap(MAP_W, MAP_H);
+  playerPowers = new PowerManager();
+  enemyPowers = new PowerManager();
+  private fogCd = 0;
 
   status: GameStatus = "playing";
   toast = "";
@@ -59,6 +68,7 @@ export class Game implements WorldApi, InputHandlers {
     const base = this.baseOf("player");
     if (base) this.camera.centerOn(base.x, base.y);
     this.recalcPower();
+    this.updateFog();
   }
 
   // ---------------- setup ----------------
@@ -136,11 +146,56 @@ export class Game implements WorldApi, InputHandlers {
   }
 
   // ---------------- WorldApi ----------------
-  spawnProjectile(from: Vec, target: Target, damage: number, team: Team, splash: number) {
-    this.projectiles.push(new Projectile(from, target, damage, team, splash));
+  spawnProjectile(from: Vec, target: Target, damage: number, team: Team, splash: number, owner: Unit | null) {
+    this.projectiles.push(new Projectile(from, target, damage, team, splash, owner));
     const ang = Math.atan2(target.y - from.y, target.x - from.x);
     this.effects.muzzleFlash(from.x, from.y, ang);
     this.audio.shoot(splash > 0 ? "cannon" : damage >= 50 ? "rocket" : "gun");
+  }
+
+  damageArea(x: number, y: number, radius: number, amount: number, casterTeam: Team) {
+    const r2 = radius * radius;
+    for (const u of this.units) {
+      if (!u.alive || u.team === casterTeam) continue;
+      if (dist2(x, y, u.x, u.y) <= r2) u.takeDamage(amount);
+    }
+    for (const b of this.buildings) {
+      if (!b.alive || b.team === casterTeam) continue;
+      if (dist2(x, y, b.x, b.y) <= r2) b.takeDamage(amount * 0.7);
+    }
+  }
+
+  spawnUnitAt(team: Team, kind: UnitKind, x: number, y: number) {
+    this.spawnUnit(team, kind, x, y);
+  }
+
+  shake(mag: number) {
+    this.camera.shake(mag);
+  }
+
+  // Used by the AI to place a structure on a free tile near its command center.
+  tryAiBuild(team: Team, kind: BuildingKind): boolean {
+    const base = this.baseOf(team);
+    if (!base) return false;
+    const def = BUILDINGS[kind];
+    if (this.credits[team] < def.cost) return false;
+    const bt = this.grid.worldToTile(base.x, base.y);
+    for (let ring = 2; ring < 9; ring++) {
+      for (let dy = -ring; dy <= ring; dy++) {
+        for (let dx = -ring; dx <= ring; dx++) {
+          if (Math.abs(dx) !== ring && Math.abs(dy) !== ring) continue; // ring border only
+          const tx = bt.tx + dx;
+          const ty = bt.ty + dy;
+          if (this.canPlace(kind, tx, ty, team)) {
+            this.credits[team] -= def.cost;
+            this.placeStructure(team, kind, tx, ty);
+            this.recalcPower();
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   findNearestEnemy(x: number, y: number, team: Team, withinSight: number): Target | null {
@@ -203,6 +258,12 @@ export class Game implements WorldApi, InputHandlers {
     return this.buildings.find((b) => b.team === team && b.kind === "command" && b.alive) ?? null;
   }
 
+  private updateFog() {
+    this.fog.clearVisible();
+    for (const u of this.units) if (u.team === "player" && u.alive) this.fog.reveal(u.x, u.y, u.def.sight);
+    for (const b of this.buildings) if (b.team === "player" && b.alive) this.fog.reveal(b.x, b.y, b.radius + 170);
+  }
+
   playerBase(): Building | null {
     return this.baseOf("player");
   }
@@ -233,6 +294,16 @@ export class Game implements WorldApi, InputHandlers {
     const cy = rect.y + rect.h / 2;
     const isClick = rect.w < 6 && rect.h < 6;
 
+    // power targeting mode
+    if (this.pendingPower) {
+      if (isInHud(cy, this.canvas.height)) return;
+      const w = isInMinimap(cx, cy, this.canvas.width, this.canvas.height)
+        ? minimapToWorld(cx, cy, this.canvas.width, this.canvas.height)
+        : this.camera.screenToWorld(cx, cy);
+      this.firePower(this.pendingPower, w.x, w.y);
+      return;
+    }
+
     // building placement mode
     if (this.placement) {
       if (isInHud(cy, this.canvas.height)) return;
@@ -241,8 +312,13 @@ export class Game implements WorldApi, InputHandlers {
       return;
     }
 
-    // HUD build buttons
+    // HUD: power buttons take priority, then build buttons
     if (isInHud(cy, this.canvas.height)) {
+      const pk = powerHitTest(cx, cy, this.canvas.width, this.canvas.height);
+      if (pk) {
+        this.requestPower(pk);
+        return;
+      }
       const entries = this.currentBuildEntries();
       const entry = hudHitTest(cx, cy, entries, this.canvas.height);
       if (entry) this.requestBuild(entry);
@@ -304,6 +380,11 @@ export class Game implements WorldApi, InputHandlers {
       this.showToast("Placement cancelled");
       return;
     }
+    if (this.pendingPower) {
+      this.pendingPower = null;
+      this.showToast("Power cancelled");
+      return;
+    }
     this.pendingAttackMove = false;
     if (isInHud(sy, this.canvas.height)) return;
     if (isInMinimap(sx, sy, this.canvas.width, this.canvas.height)) {
@@ -355,11 +436,19 @@ export class Game implements WorldApi, InputHandlers {
     }
     if (key === "escape") {
       if (this.placement) this.placement = null;
+      else if (this.pendingPower) this.pendingPower = null;
       else {
         this.clearSelection();
         this.pendingAttackMove = false;
       }
       return;
+    }
+    // general power hotkeys
+    for (const pk of POWER_ORDER) {
+      if (POWERS[pk].hotkey.toLowerCase() === key) {
+        this.requestPower(pk);
+        return;
+      }
     }
     const ctrl = this.input.keys.has("control");
     if (/^[1-9]$/.test(key) && ctrl) {
@@ -443,6 +532,28 @@ export class Game implements WorldApi, InputHandlers {
       if (dist2(wx, wy, f.x, f.y) <= TILE * TILE) return f;
     }
     return null;
+  }
+
+  // ---------------- general powers ----------------
+  private requestPower(kind: PowerKind) {
+    if (this.status !== "playing") return;
+    if (!this.playerPowers.canFire(kind)) {
+      this.showToast(`${POWERS[kind].name} charging…`);
+      return;
+    }
+    this.placement = null;
+    this.pendingAttackMove = false;
+    this.pendingPower = kind;
+    this.showToast(`${POWERS[kind].name}: pick a target`);
+  }
+
+  private firePower(kind: PowerKind, wx: number, wy: number) {
+    const ok = this.playerPowers.fire(kind, wx, wy, this, "player");
+    this.pendingPower = null;
+    if (ok) {
+      this.showToast(`${POWERS[kind].name} launched`);
+      this.audio.order();
+    }
   }
 
   // ---------------- build / placement ----------------
@@ -540,6 +651,14 @@ export class Game implements WorldApi, InputHandlers {
     this.camera.updateShake(dt);
     this.effects.update(dt);
     if (this.status !== "playing") return;
+
+    this.playerPowers.update(dt, this);
+    this.enemyPowers.update(dt, this);
+    this.fogCd -= dt;
+    if (this.fogCd <= 0) {
+      this.updateFog();
+      this.fogCd = 0.15;
+    }
 
     let structureChanged = false;
 
