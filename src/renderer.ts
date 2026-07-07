@@ -89,36 +89,79 @@ export class Renderer {
         const px = tx * TILE;
         const py = ty * TILE;
         if (c.terrain === 2) {
-          // rocky outcrop
+          // rocky outcrop — layered boulder for depth
           ctx.fillStyle = COLORS.dirt;
           ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
+          ctx.fillStyle = "rgba(0,0,0,0.18)";
+          ctx.beginPath();
+          ctx.ellipse(px + TILE / 2 + 2, py + TILE / 2 + 3, TILE * 0.44, TILE * 0.34, n * 3, 0, Math.PI * 2);
+          ctx.fill();
           ctx.fillStyle = COLORS.rock;
           ctx.beginPath();
-          ctx.ellipse(px + TILE / 2, py + TILE / 2, TILE * 0.42, TILE * 0.34, n * 3, 0, Math.PI * 2);
+          ctx.ellipse(px + TILE / 2, py + TILE / 2, TILE * 0.42, TILE * 0.32, n * 3, 0, Math.PI * 2);
           ctx.fill();
-          ctx.fillStyle = "rgba(255,255,255,0.06)";
+          ctx.fillStyle = "rgba(255,255,255,0.10)";
           ctx.beginPath();
-          ctx.ellipse(px + TILE * 0.4, py + TILE * 0.4, TILE * 0.2, TILE * 0.14, 0, 0, Math.PI * 2);
+          ctx.ellipse(px + TILE * 0.38, py + TILE * 0.36, TILE * 0.2, TILE * 0.13, 0, 0, Math.PI * 2);
           ctx.fill();
         } else {
-          ctx.fillStyle = c.terrain === 1 ? COLORS.dirt : n < 0.5 ? COLORS.grass : COLORS.grassAlt;
+          // Organic sand: a single low-contrast base (no checkerboard) plus a
+          // slow dune gradient for large-scale shading. "Dirt" tiles are drawn
+          // as soft blotches over the sand rather than hard squares.
+          const dune = this.dune(tx, ty); // 0..1 smooth
+          ctx.fillStyle = COLORS.grass;
           ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
-          // subtle grain
-          if (n < 0.12) {
-            ctx.fillStyle = "rgba(0,0,0,0.05)";
-            ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
-          } else if (n > 0.9) {
-            ctx.fillStyle = "rgba(255,255,255,0.05)";
-            ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
+          // dune light/shadow bands
+          const shade = (dune - 0.5) * 0.14;
+          ctx.fillStyle = shade >= 0 ? `rgba(255,240,200,${shade})` : `rgba(60,45,25,${-shade})`;
+          ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
+          if (c.terrain === 1) {
+            // soft dirt patch — overlaps tile edges so it never reads as a grid
+            ctx.fillStyle = "rgba(140,105,58,0.55)";
+            ctx.beginPath();
+            ctx.ellipse(px + TILE / 2, py + TILE / 2, TILE * 0.62, TILE * 0.52, n * 3, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            // faint wind ripples
+            ctx.strokeStyle = "rgba(120,95,55,0.10)";
+            ctx.lineWidth = 1;
+            const oy = py + n * TILE;
+            ctx.beginPath();
+            ctx.moveTo(px, oy);
+            ctx.quadraticCurveTo(px + TILE / 2, oy - 3, px + TILE, oy);
+            ctx.stroke();
           }
-          // speckle
-          if (n > 0.4 && n < 0.46) {
-            ctx.fillStyle = "rgba(90,70,40,0.35)";
-            ctx.fillRect(px + n * TILE, py + (1 - n) * TILE, 2, 2);
+          // sparse pebbles / scrub, deterministic per tile
+          if (n > 0.86) {
+            ctx.fillStyle = "rgba(80,62,38,0.5)";
+            ctx.beginPath();
+            ctx.arc(px + n * TILE, py + (1 - n) * TILE, 1.6, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (n < 0.06) {
+            ctx.fillStyle = "rgba(150,120,70,0.35)";
+            ctx.beginPath();
+            ctx.arc(px + (1 - n) * TILE * 4 % TILE, py + n * TILE * 5 % TILE, 1.3, 0, Math.PI * 2);
+            ctx.fill();
           }
         }
       }
     }
+  }
+
+  // Smooth low-frequency field (bilinear-interpolated tile noise) for dunes.
+  private dune(tx: number, ty: number): number {
+    const s = 6; // dune wavelength in tiles
+    const gx = Math.floor(tx / s), gy = Math.floor(ty / s);
+    const fx = (tx % s) / s, fy = (ty % s) / s;
+    const a = this.tileNoise(gx, gy);
+    const b = this.tileNoise(gx + 1, gy);
+    const c = this.tileNoise(gx, gy + 1);
+    const d = this.tileNoise(gx + 1, gy + 1);
+    const sx = fx * fx * (3 - 2 * fx);
+    const sy = fy * fy * (3 - 2 * fy);
+    const top = a + (b - a) * sx;
+    const bot = c + (d - c) * sx;
+    return top + (bot - top) * sy;
   }
 
   private drawFog(game: Game) {
@@ -166,6 +209,28 @@ export class Renderer {
     ctx.closePath();
   }
 
+  // A brief muzzle flash at the end of a barrel: yellow-white star + glow.
+  private muzzleFlash(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, len: number, size: number) {
+    const mx = x + Math.cos(angle) * len;
+    const my = y + Math.sin(angle) * len;
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.rotate(angle);
+    ctx.fillStyle = "rgba(255,210,90,0.5)";
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff2c4";
+    ctx.beginPath();
+    ctx.moveTo(size * 1.8, 0);
+    ctx.lineTo(0, -size * 0.7);
+    ctx.lineTo(size * 0.5, 0);
+    ctx.lineTo(0, size * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
   private shadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number) {
     ctx.fillStyle = "rgba(0,0,0,0.22)";
     ctx.beginPath();
@@ -200,19 +265,38 @@ export class Renderer {
 
     this.shadow(ctx, b.x, py + h - 6, w * 0.5, h * 0.28);
 
-    // body with bevel
-    ctx.fillStyle = "#20242c";
-    ctx.fillRect(px + 2, py + 2, w - 4, h - 4);
-    ctx.fillStyle = dark;
+    // Concrete pad + metal body. The bulk is neutral (like the real game's
+    // structures); the team colour lives in the trim, corner pylons and roof
+    // detail so sides stay readable without looking like flat coloured boxes.
+    ctx.fillStyle = "#15171d";
+    ctx.fillRect(px + 1, py + 1, w - 2, h - 2);
+    ctx.fillStyle = "#2c313b"; // metal body
     ctx.fillRect(px + 4, py + 4, w - 8, h - 8);
+    // panel seams
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
+    ctx.lineWidth = 1;
+    for (let gx = px + 4 + 14; gx < px + w - 6; gx += 14) {
+      ctx.beginPath();
+      ctx.moveTo(gx, py + 5);
+      ctx.lineTo(gx, py + h - 5);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.fillRect(px + 4, py + 4, w - 8, 3); // top light
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.fillRect(px + 4, py + h - 6, w - 8, 2); // ground shade
+    // team-colour corner pylons
     ctx.fillStyle = main;
-    ctx.fillRect(px + 8, py + 8, w - 16, h - 16);
-    ctx.fillStyle = "rgba(255,255,255,0.12)";
-    ctx.fillRect(px + 8, py + 8, w - 16, 4); // top highlight
-    ctx.fillStyle = "rgba(0,0,0,0.18)";
-    ctx.fillRect(px + 8, py + h - 12, w - 16, 4); // bottom shade
+    const cs = 7;
+    ctx.fillRect(px + 3, py + 3, cs, cs);
+    ctx.fillRect(px + w - 3 - cs, py + 3, cs, cs);
+    ctx.fillRect(px + 3, py + h - 3 - cs, cs, cs);
+    ctx.fillRect(px + w - 3 - cs, py + h - 3 - cs, cs, cs);
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + 3.5, py + 3.5, w - 7, h - 7);
 
-    this.buildingGlyph(ctx, b, px, py, w, h);
+    this.buildingGlyph(ctx, b, px, py, w, h, main, dark);
 
     if (b.def.needsPower && !b.powered) {
       ctx.fillStyle = "rgba(0,0,0,0.4)";
@@ -236,6 +320,7 @@ export class Renderer {
       ctx.fillStyle = dark;
       ctx.fillRect(0, -2.5, b.radius + 6, 5);
       ctx.restore();
+      if (b.muzzle > 0) this.muzzleFlash(ctx, b.x, b.y, b.aimAngle, b.radius + 6, 4);
     }
 
     // damage flames
@@ -262,52 +347,152 @@ export class Renderer {
     }
   }
 
-  private buildingGlyph(ctx: CanvasRenderingContext2D, b: Building, px: number, py: number, w: number, h: number) {
+  private buildingGlyph(
+    ctx: CanvasRenderingContext2D,
+    b: Building,
+    px: number,
+    py: number,
+    w: number,
+    h: number,
+    main: string,
+    dark: string
+  ) {
     const cx = px + w / 2;
     const cy = py + h / 2;
-    ctx.fillStyle = "rgba(0,0,0,0.25)";
     switch (b.kind) {
-      case "command":
-        ctx.fillStyle = "rgba(255,255,255,0.22)";
-        ctx.fillRect(cx - 10, cy - 10, 20, 20);
+      case "command": {
+        // central bunker with a slow-spinning radar dish + comms mast
+        ctx.fillStyle = "#3a4150";
+        ctx.fillRect(cx - 16, cy - 16, 32, 32);
         ctx.fillStyle = "rgba(0,0,0,0.3)";
-        ctx.fillRect(cx - 5, cy - 5, 10, 10);
-        break;
-      case "power": {
-        ctx.fillStyle = "rgba(20,24,30,0.6)";
-        ctx.beginPath();
-        ctx.arc(cx - 7, cy + 2, 6, 0, Math.PI * 2);
-        ctx.arc(cx + 7, cy + 2, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#ffe27a";
-        ctx.font = "bold 14px system-ui";
+        ctx.fillRect(cx - 16, cy - 16, 32, 32);
+        ctx.strokeStyle = main;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cx - 16, cy - 16, 32, 32);
+        // rooftop landing "H"
+        ctx.fillStyle = main;
+        ctx.font = "bold 18px system-ui";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("⚡", cx, cy - 6);
+        ctx.fillText("★", cx, cy - 1);
+        // rotating radar dish on a corner
+        const t = performance.now() / 700 + b.id;
+        const rx = px + w - 14, ry = py + 14;
+        ctx.fillStyle = "#20242c";
+        ctx.beginPath();
+        ctx.arc(rx, ry, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#cdd6e4";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(rx, ry);
+        ctx.lineTo(rx + Math.cos(t) * 8, ry + Math.sin(t) * 8);
+        ctx.stroke();
         break;
       }
-      case "barracks":
-        ctx.fillStyle = "rgba(20,24,30,0.55)";
-        ctx.fillRect(cx - 5, cy - 9, 10, 18);
-        ctx.fillStyle = "rgba(255,255,255,0.15)";
-        ctx.fillRect(cx - 5, cy - 9, 10, 3);
-        break;
-      case "factory":
-        ctx.fillStyle = "rgba(20,24,30,0.5)";
-        for (let i = -1; i <= 1; i++) {
+      case "power": {
+        // two cooling towers + a pulsing energy core
+        ctx.fillStyle = "#3a4150";
+        for (const dx of [-9, 9]) {
           ctx.beginPath();
-          ctx.moveTo(cx + i * 9 - 5, cy + 8);
-          ctx.lineTo(cx + i * 9, cy - 6);
-          ctx.lineTo(cx + i * 9 + 5, cy + 8);
+          ctx.moveTo(cx + dx - 6, cy + 10);
+          ctx.lineTo(cx + dx - 4, cy - 8);
+          ctx.lineTo(cx + dx + 4, cy - 8);
+          ctx.lineTo(cx + dx + 6, cy + 10);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = "rgba(0,0,0,0.3)";
+          ctx.fillRect(cx + dx - 4, cy - 8, 8, 3);
+          ctx.fillStyle = "#3a4150";
+        }
+        const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 260 + b.id);
+        ctx.fillStyle = b.powered ? `rgba(120,220,255,${pulse})` : "rgba(90,90,90,0.5)";
+        ctx.beginPath();
+        ctx.arc(cx, cy + 1, 5, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "barracks": {
+        // quonset hut with a doorway + flag
+        ctx.fillStyle = "#454b57";
+        ctx.beginPath();
+        ctx.moveTo(cx - 16, cy + 12);
+        ctx.arc(cx, cy + 12, 16, Math.PI, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.08)";
+        ctx.beginPath();
+        ctx.arc(cx, cy + 12, 16, Math.PI, Math.PI * 1.5);
+        ctx.lineTo(cx, cy + 12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#1a1d24";
+        ctx.fillRect(cx - 5, cy - 1, 10, 13); // doorway
+        // flagpole
+        ctx.strokeStyle = "#20242c";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx + 13, cy + 12);
+        ctx.lineTo(cx + 13, cy - 14);
+        ctx.stroke();
+        ctx.fillStyle = main;
+        ctx.fillRect(cx + 13, cy - 14, 9, 6);
+        break;
+      }
+      case "factory": {
+        // saw-tooth hangar roof + roll-up bay door
+        ctx.fillStyle = "#3a4150";
+        ctx.fillRect(cx - 20, cy - 14, 40, 28);
+        ctx.fillStyle = "#2a2f38";
+        for (let i = -2; i <= 2; i++) {
+          ctx.beginPath();
+          ctx.moveTo(cx + i * 8 - 4, cy - 4);
+          ctx.lineTo(cx + i * 8, cy - 14);
+          ctx.lineTo(cx + i * 8 + 4, cy - 4);
           ctx.closePath();
           ctx.fill();
         }
+        // bay door with team stripe
+        ctx.fillStyle = "#1a1d24";
+        ctx.fillRect(cx - 12, cy + 1, 24, 13);
+        ctx.fillStyle = main;
+        ctx.fillRect(cx - 12, cy + 1, 24, 2);
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.lineWidth = 1;
+        for (let dy = cy + 4; dy < cy + 14; dy += 3) {
+          ctx.beginPath();
+          ctx.moveTo(cx - 12, dy);
+          ctx.lineTo(cx + 12, dy);
+          ctx.stroke();
+        }
         break;
-      case "supply":
-        ctx.fillStyle = "rgba(230,195,74,0.6)";
-        ctx.fillRect(cx - 10, cy - 1, 7, 7);
-        ctx.fillRect(cx + 3, cy - 1, 7, 7);
-        ctx.fillRect(cx - 4, cy - 9, 7, 7);
+      }
+      case "supply": {
+        // stacked shipping containers + a team-marked crate
+        ctx.fillStyle = COLORS.supply;
+        ctx.fillRect(cx - 14, cy - 2, 11, 10);
+        ctx.fillStyle = "#b98b3a";
+        ctx.fillRect(cx - 2, cy - 2, 11, 10);
+        ctx.fillStyle = "#8a6d3b";
+        ctx.fillRect(cx - 8, cy - 12, 11, 10);
+        ctx.strokeStyle = "rgba(0,0,0,0.35)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - 14, cy - 2, 11, 10);
+        ctx.strokeRect(cx - 2, cy - 2, 11, 10);
+        ctx.strokeRect(cx - 8, cy - 12, 11, 10);
+        ctx.fillStyle = main;
+        ctx.fillRect(cx + 9, cy + 2, 6, 6); // team marker
+        break;
+      }
+      case "turret":
+        // base ring is enough — the barrel is drawn separately
+        ctx.fillStyle = "#20242c";
+        ctx.beginPath();
+        ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = dark;
+        ctx.lineWidth = 2;
+        ctx.stroke();
         break;
     }
   }
@@ -424,6 +609,13 @@ export class Renderer {
         ctx.restore();
         break;
       }
+    }
+
+    if (u.muzzle > 0 && u.def.damage > 0) {
+      const barrel =
+        u.kind === "marksman" ? u.radius + 11 : u.kind === "artillery" ? u.radius * 2.4 : u.radius + 6;
+      const sz = u.kind === "artillery" || u.kind === "overlord" ? 5 : u.kind === "rocketeer" ? 4.5 : 3;
+      this.muzzleFlash(ctx, u.x, u.y, u.turretAngle, barrel, sz);
     }
 
     const frac = u.hp / u.maxHp;
@@ -547,16 +739,24 @@ export class Renderer {
     const pf = game.factions["player"];
     ctx.fillStyle = pf.color;
     ctx.font = "bold 14px system-ui, sans-serif";
-    ctx.fillText(`⚑ ${pf.name}`, 540, 21);
+    const flag = `⚑ ${pf.name}`;
+    ctx.fillText(flag, 540, 21);
+    const factionEnd = 540 + ctx.measureText(flag).width;
 
-    ctx.fillStyle = "#94a3b8";
-    ctx.textAlign = "right";
+    // Controls hint, right-aligned — only drawn if it clears the faction label
+    // (otherwise it collided with it on medium widths).
     const hint =
       this.touch || W < 1180
         ? "Tap: select / order · drag: box-select · 2 fingers: pan · pinch: zoom"
         : "Arrows: pan · wheel: zoom · A: attack-move · Z/X/C: powers · K: sell";
-    ctx.fillText(hint, W - 16, 21);
-    ctx.textAlign = "left";
+    ctx.font = "14px system-ui, sans-serif";
+    const hintW = ctx.measureText(hint).width;
+    if (W - 16 - hintW > factionEnd + 24) {
+      ctx.fillStyle = "#94a3b8";
+      ctx.textAlign = "right";
+      ctx.fillText(hint, W - 16, 21);
+      ctx.textAlign = "left";
+    }
 
     ctx.fillStyle = "rgba(10,12,16,0.92)";
     ctx.fillRect(0, H - HUD_HEIGHT, W, HUD_HEIGHT);

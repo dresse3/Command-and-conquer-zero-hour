@@ -36,6 +36,7 @@ export class Unit {
   y: number;
   angle = 0; // body / movement facing
   turretAngle = 0; // weapon facing
+  muzzle = 0; // >0 for a few frames after firing (draws a muzzle flash)
 
   state: UnitState = "idle";
   path: Vec[] = [];
@@ -141,6 +142,7 @@ export class Unit {
     if (!this.alive) return;
     this.fireCd -= dt;
     this.repathCd -= dt;
+    if (this.muzzle > 0) this.muzzle -= dt;
 
     if (this.rank > 0 && this.hp < this.maxHp) {
       this.hp = Math.min(this.maxHp, this.hp + VET_REGEN[this.rank] * dt);
@@ -207,6 +209,7 @@ export class Unit {
       if (this.fireCd <= 0) {
         world.spawnProjectile({ x: this.x, y: this.y }, t, this.currentDamage, this.team, this.def.splash, this);
         this.fireCd = 1 / this.def.fireRate;
+        this.muzzle = 0.09;
       }
     }
   }
@@ -381,6 +384,7 @@ export class Building {
   queue: { kind: UnitKind; timeLeft: number; total: number }[] = [];
   rally: Vec;
   aimAngle = -Math.PI / 2; // turret facing (default: up)
+  muzzle = 0; // >0 briefly after the turret fires (muzzle flash)
   private fireCd = 0;
 
   constructor(public team: Team, public kind: BuildingKind, public tileX: number, public tileY: number) {
@@ -416,6 +420,7 @@ export class Building {
   // Returns a finished unit kind to spawn, or null.
   update(dt: number, world: WorldApi): UnitKind | null {
     // turret weapon
+    if (this.muzzle > 0) this.muzzle -= dt;
     if (this.def.damage > 0 && this.functional) {
       this.fireCd -= dt;
       const enemy = world.findNearestEnemy(this.x, this.y, this.team, this.def.range);
@@ -428,6 +433,7 @@ export class Building {
           };
           world.spawnProjectile(muzzle, enemy, this.def.damage, this.team, 0, null);
           this.fireCd = 1 / this.def.fireRate;
+          this.muzzle = 0.09;
         }
       }
     }
