@@ -7,6 +7,10 @@ import {
   START_CREDITS,
   SUPPLY_FIELD_START,
   BUILD_RADIUS,
+  STRUCTURE_BUILD,
+  FACTORY_HEAL_RATE,
+  FACTORY_HEAL_RANGE,
+  ATTACK_ALARM_COOLDOWN,
   type Team,
   type UnitKind,
   type BuildingKind,
@@ -83,6 +87,10 @@ export class Game implements WorldApi, InputHandlers {
   toast = "";
   private toastCd = 0;
 
+  // "under attack" alarm + a fading minimap ping at the last hit location
+  private alarmCd = 0;
+  attackPing: { x: number; y: number; t: number } | null = null;
+
   private ai: EnemyAI | null = null;
   input: Input;
   readonly isTouch = typeof navigator !== "undefined" && (navigator.maxTouchPoints || 0) > 0;
@@ -142,6 +150,8 @@ export class Game implements WorldApi, InputHandlers {
     this.ai = null;
     this.toast = "";
     this.toastCd = 0;
+    this.alarmCd = 0;
+    this.attackPing = null;
   }
 
   // The "Play Again" button on the victory/defeat overlay. Shared by the
@@ -180,8 +190,11 @@ export class Game implements WorldApi, InputHandlers {
 
   // ---------------- setup ----------------
   private setup() {
-    this.buildBase("player", 4, 49);
-    this.buildBase("enemy", MAP_W - 7, 4);
+    // The player starts small (Command Center + Power Plant) and must build up
+    // the tech tree with harvesters. The AI starts with a full base so it can
+    // fight from the opening.
+    this.buildBase("player", 4, 49, false);
+    this.buildBase("enemy", MAP_W - 7, 4, true);
 
     this.addSupply(11, MAP_H - 8, SUPPLY_FIELD_START);
     this.addSupply(MAP_W - 13, 9, SUPPLY_FIELD_START);
@@ -190,7 +203,11 @@ export class Game implements WorldApi, InputHandlers {
 
     for (const team of ["player", "enemy"] as Team[]) {
       const base = this.baseOf(team)!;
-      this.spawnUnit(team, "harvester", base.rally.x, base.rally.y);
+      // player gets an extra harvester to bootstrap building the tech tree
+      const harvesters = team === "player" ? 3 : 1;
+      for (let i = 0; i < harvesters; i++) {
+        this.spawnUnit(team, "harvester", base.rally.x + (i - 1) * 30, base.rally.y);
+      }
       this.spawnUnit(team, "ranger", base.rally.x - 34, base.rally.y + 18);
       this.spawnUnit(team, "ranger", base.rally.x + 34, base.rally.y + 18);
     }
@@ -201,16 +218,19 @@ export class Game implements WorldApi, InputHandlers {
         if (f) u.gather(this, f);
       }
     }
+    if (this.phase !== "playing") this.showToast("Build a Barracks, then a War Factory to unlock tanks");
   }
 
   // stamp a starting base cluster for a team around a corner tile
-  private buildBase(team: Team, cx: number, cy: number) {
+  private buildBase(team: Team, cx: number, cy: number, full: boolean) {
     const dir = team === "player" ? 1 : -1; // player grows up-right, enemy down-left
     this.clearArea(cx - 2, cy - 2, 12, 12);
     this.placeStructure(team, "command", cx, cy);
     this.placeStructure(team, "power", cx + 4 * dir, cy);
-    this.placeStructure(team, "barracks", cx, cy - 3 * dir);
-    this.placeStructure(team, "factory", cx + 4 * dir, cy - 4 * dir);
+    if (full) {
+      this.placeStructure(team, "barracks", cx, cy - 3 * dir);
+      this.placeStructure(team, "factory", cx + 4 * dir, cy - 4 * dir);
+    }
   }
 
   private clearArea(tx: number, ty: number, w: number, h: number) {
@@ -314,6 +334,7 @@ export class Game implements WorldApi, InputHandlers {
       if (!b.alive || b.team === casterTeam) continue;
       if (dist2(x, y, b.x, b.y) <= r2) b.takeDamage(amount * 0.7);
     }
+    if (casterTeam === "enemy") this.reportAttack(x, y, "enemy");
   }
 
   spawnUnitAt(team: Team, kind: UnitKind, x: number, y: number) {
@@ -328,6 +349,7 @@ export class Game implements WorldApi, InputHandlers {
   tryAiBuild(team: Team, kind: BuildingKind): boolean {
     const base = this.baseOf(team) ?? this.anyBuilding(team);
     if (!base) return false;
+    if (!this.structurePrereqMet(kind, team)) return false;
     const cost = this.buildingCost(kind, team);
     if (this.credits[team] < cost) return false;
     const bt = this.grid.worldToTile(base.x, base.y);
@@ -405,6 +427,34 @@ export class Game implements WorldApi, InputHandlers {
     this.credits[team] += amount;
   }
 
+  // A structure finished construction (called from Building.update).
+  onBuildingComplete(b: Building) {
+    this.recalcPower();
+    if (b.team === "player") {
+      this.effects.dust(b.x, b.y, 18);
+      this.audio.ready();
+      this.showToast(`${b.def.name} online`);
+    }
+  }
+
+  // A harvester repaired a building this frame — occasional feedback.
+  onRepairTick(b: Building) {
+    if (b.team === "player" && Math.random() < 0.04) this.effects.dust(b.x, b.y - b.radius * 0.3, 3);
+  }
+
+  // Something on the receiving team got hit — raise a throttled alarm if it's
+  // the player being attacked, and drop a fading ping on the minimap.
+  reportAttack(x: number, y: number, attackerTeam: Team) {
+    if (attackerTeam === "enemy") {
+      this.attackPing = { x, y, t: 2.5 };
+      if (this.alarmCd <= 0) {
+        this.alarmCd = ATTACK_ALARM_COOLDOWN;
+        this.audio.alarm();
+        this.showToast("⚠ Your forces are under attack!");
+      }
+    }
+  }
+
   baseOf(team: Team): Building | null {
     return this.buildings.find((b) => b.team === team && b.kind === "command" && b.alive) ?? null;
   }
@@ -445,13 +495,32 @@ export class Game implements WorldApi, InputHandlers {
     }
   }
 
+  // Ground vehicles parked near a friendly, working War Factory are slowly
+  // repaired — drive damaged tanks home to heal them.
+  private applyFactoryHeal(dt: number) {
+    const factories = this.buildings.filter((b) => b.alive && b.kind === "factory" && b.functional);
+    if (factories.length === 0) return;
+    const r2 = FACTORY_HEAL_RANGE * FACTORY_HEAL_RANGE;
+    for (const u of this.units) {
+      if (!u.alive || u.def.flying || u.def.radius < 12) continue; // vehicles only
+      if (u.hp >= u.maxHp) continue;
+      for (const f of factories) {
+        if (f.team !== u.team) continue;
+        if (dist2(u.x, u.y, f.x, f.y) <= r2) {
+          u.hp = Math.min(u.maxHp, u.hp + FACTORY_HEAL_RATE * dt);
+          break;
+        }
+      }
+    }
+  }
+
   // ---------------- power ----------------
   private recalcPower() {
     for (const team of ["player", "enemy"] as Team[]) {
       let provided = 0;
       let used = 0;
       for (const b of this.buildings) {
-        if (!b.alive || b.team !== team) continue;
+        if (!b.alive || b.team !== team || b.constructing) continue; // sites draw no power yet
         provided += b.def.powerProvided;
         used += b.def.powerUsed;
       }
@@ -602,6 +671,27 @@ export class Game implements WorldApi, InputHandlers {
       this.showToast("Attacking");
       return;
     }
+    // Order on a friendly building: harvesters repair it if damaged; vehicles
+    // sent to a War Factory roll into its repair bay (heal aura).
+    const own = this.pickOwnBuilding(wx, wy);
+    if (own) {
+      const builders = this.selected.filter((u) => u.def.canBuild);
+      if (builders.length > 0 && own.hp < own.maxHp && !own.constructing) {
+        for (const u of builders) u.goRepair(this, own);
+        this.showToast(`Repairing ${own.def.name}`);
+        return;
+      }
+      if (own.constructing && builders.length > 0) {
+        for (const u of builders) u.goBuild(this, own);
+        this.showToast(`Building ${own.def.name}…`);
+        return;
+      }
+      if (own.kind === "factory") {
+        for (const u of this.selected) u.moveTo(this, own.rally.x, own.rally.y, false);
+        this.showToast("Rolling into the repair bay");
+        return;
+      }
+    }
     const field = this.pickSupply(wx, wy);
     if (field) {
       let sent = false;
@@ -707,6 +797,14 @@ export class Game implements WorldApi, InputHandlers {
         return;
       }
     }
+    // structure build hotkeys (1-6) when a harvester/builder is selected
+    if (!this.selectedBuilding && this.hasBuilderSelected()) {
+      const entry = STRUCTURE_BUILD.find((e) => e.hotkey.toLowerCase() === key);
+      if (entry) {
+        this.requestBuild(entry);
+        return;
+      }
+    }
     if (/^[1-9]$/.test(key)) this.selectGroup(key);
   }
 
@@ -744,7 +842,21 @@ export class Game implements WorldApi, InputHandlers {
   }
 
   currentBuildEntries(): BuildEntry[] {
-    return this.selectedBuilding ? this.producesFor(this.selectedBuilding) : [];
+    if (this.selectedBuilding) return this.producesFor(this.selectedBuilding);
+    // With a harvester (builder) selected, show the structure build menu.
+    if (this.hasBuilderSelected()) return STRUCTURE_BUILD;
+    return [];
+  }
+
+  hasBuilderSelected(): boolean {
+    return this.selected.some((u) => u.alive && u.team === "player" && u.def.canBuild);
+  }
+
+  // Whether a structure can be built now: prereq building must exist & be done.
+  structurePrereqMet(kind: BuildingKind, team: Team): boolean {
+    const prereq = BUILDINGS[kind].prereq;
+    if (!prereq) return true;
+    return this.buildings.some((b) => b.alive && !b.constructing && b.team === team && b.kind === prereq);
   }
 
   private moveFormation(wx: number, wy: number) {
@@ -846,12 +958,21 @@ export class Game implements WorldApi, InputHandlers {
       return;
     }
     if (entry.type === "building") {
-      const def = BUILDINGS[entry.key as BuildingKind];
-      if (this.credits["player"] < this.buildingCost(entry.key as BuildingKind, "player")) {
+      const kind = entry.key as BuildingKind;
+      const def = BUILDINGS[kind];
+      if (!this.hasBuilderSelected()) {
+        this.showToast("Select a Harvester to build structures");
+        return;
+      }
+      if (!this.structurePrereqMet(kind, "player")) {
+        this.showToast(`Requires ${BUILDINGS[def.prereq!].name} first`);
+        return;
+      }
+      if (this.credits["player"] < this.buildingCost(kind, "player")) {
         this.showToast("Not enough credits");
         return;
       }
-      this.placement = entry.key as BuildingKind;
+      this.placement = kind;
       this.showToast(`Place ${def.name} (Esc to cancel)`);
       return;
     }
@@ -909,6 +1030,11 @@ export class Game implements WorldApi, InputHandlers {
     const kind = this.placement!;
     const { tx, ty } = this.placementTile(wx, wy, kind);
     const def = BUILDINGS[kind];
+    if (!this.structurePrereqMet(kind, "player")) {
+      this.showToast(`Requires ${BUILDINGS[def.prereq!].name} first`);
+      this.placement = null;
+      return;
+    }
     if (!this.canPlace(kind, tx, ty, "player")) {
       this.showToast("Can't build there");
       return;
@@ -921,11 +1047,32 @@ export class Game implements WorldApi, InputHandlers {
     }
     this.credits["player"] -= cost;
     const nb = this.placeStructure("player", kind, tx, ty);
+    nb.beginConstruction(); // rises over its build time
     this.recalcPower();
     this.effects.dust(nb.x, nb.y, 14);
     this.audio.place();
-    this.showToast(`${def.name} built`);
+    this.dispatchBuilder(nb);
+    this.showToast(`Building ${def.name}…`);
     if (!this.input.keys.has("shift")) this.placement = null; // shift = keep placing
+  }
+
+  // Send a harvester to a new construction site: prefer a selected builder,
+  // else the nearest idle/gathering player harvester.
+  private dispatchBuilder(site: Building) {
+    const builders = this.selected.filter((u) => u.alive && u.team === "player" && u.def.canBuild);
+    let builder = builders[0] ?? null;
+    if (!builder) {
+      let bestD = Infinity;
+      for (const u of this.units) {
+        if (!u.alive || u.team !== "player" || !u.def.canBuild) continue;
+        const d = dist2(u.x, u.y, site.x, site.y);
+        if (d < bestD) {
+          bestD = d;
+          builder = u;
+        }
+      }
+    }
+    if (builder) builder.goBuild(this, site);
   }
 
   private showToast(msg: string) {
@@ -941,6 +1088,12 @@ export class Game implements WorldApi, InputHandlers {
     this.effects.update(dt);
     if (this.status !== "playing") return;
 
+    if (this.alarmCd > 0) this.alarmCd -= dt;
+    if (this.attackPing) {
+      this.attackPing.t -= dt;
+      if (this.attackPing.t <= 0) this.attackPing = null;
+    }
+
     this.playerPowers.update(dt, this);
     this.enemyPowers.update(dt, this);
     this.fogCd -= dt;
@@ -948,6 +1101,7 @@ export class Game implements WorldApi, InputHandlers {
       this.updateFog();
       this.fogCd = 0.15;
     }
+    this.applyFactoryHeal(dt);
 
     let structureChanged = false;
 
@@ -957,7 +1111,14 @@ export class Game implements WorldApi, InputHandlers {
       if (finished) {
         const spawn = this.freeSpawnNear(b);
         const u = this.spawnUnit(b.team, finished, spawn.x, spawn.y);
-        u.moveTo(this, b.rally.x, b.rally.y, b.team === "enemy");
+        if (u.def.canGather) {
+          // harvesters & supply choppers roll straight out to work
+          const f = this.findNearestSupply(u.x, u.y);
+          if (f) u.gather(this, f);
+          else u.moveTo(this, b.rally.x, b.rally.y, false);
+        } else {
+          u.moveTo(this, b.rally.x, b.rally.y, b.team === "enemy");
+        }
         if (b.team === "enemy") this.ai?.guard(u);
         if (b.team === "player") this.audio.ready();
       }
