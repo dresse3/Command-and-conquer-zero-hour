@@ -41,6 +41,23 @@ npm run preview
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
 | **Esc** | Annullér placering / power / fjern markering |
 
+## Nyt i v0.9 — spilbar på iPad & touch
+
+Spillet er nu spilbart på **iPad, iPhone og touch-skærme** direkte i browseren (samme cross-platform-ånd som Apple-porten af Generals, men i vores egen kode):
+
+| Gestus | Handling |
+|--------|----------|
+| **Tap på faktionskort** | Vælg side og start |
+| **Tap** | Vælg enhed/bygning · med enheder valgt: flyt/angrib det tappede punkt |
+| **Én-finger træk** | Marker enheder (box-select) |
+| **To-finger træk** | Panorér kameraet |
+| **Pinch (to fingre)** | Zoom ind/ud |
+| **Tap på HUD/minimap** | Byg, powers, sælg, spring kamera |
+
+Mus/tastatur virker stadig på desktop. iOS-viewport er låst (ingen utilsigtet browser-zoom/scroll), og alle gestures håndteres af spillet.
+
+> **Bemærk om sprites:** den delte Apple-port indeholder ingen grafik-assets (kun motor-kode), og det originale spils grafik er EA's copyright — så der er ingen sprites at hente derfra. Rigtige *originale* sprites kan genereres senere.
+
 ## Nyt i v0.8 — opgraderinger & tech
 
 Køb permanente, holdbrede forbedringer ved at vælge en bygning og klikke opgraderingen (guldfarvet knap) — én gang hver, virker på hele hæren:
@@ -155,8 +172,9 @@ src/
 - [x] Faktions-asymmetri (tre spilbare sider)
 - [x] Signatur-enhed + særtræk pr. faktion
 - [x] Opgraderinger / tech (våben, panser, økonomi, strøm)
+- [x] Touch/iPad-understøttelse (spilbar på tablet/mobil)
 - [ ] Faktions-specifikke opgraderinger/superweapon-bygninger
-- [ ] AI-genererede sprites (foto-realistisk løft)
+- [ ] Originale AI-genererede sprites (foto-realistisk løft)
 - [ ] Pak som desktop-app (Tauri/Electron) for native Win/Mac
 
 ## Licens

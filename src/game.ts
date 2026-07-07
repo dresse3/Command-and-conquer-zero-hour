@@ -569,6 +569,43 @@ export class Game implements WorldApi, InputHandlers {
     this.camera.setZoom(factor, sx, sy);
   }
 
+  // two-finger drag pans the camera (content follows the fingers)
+  onPan(dx: number, dy: number) {
+    if (this.phase !== "playing") return;
+    this.camera.pan(-dx / this.camera.zoom, -dy / this.camera.zoom);
+  }
+
+  // A touch tap: context-sensitive. Menus/placement/powers/selection go through
+  // onSelect; but with a live selection, tapping open ground or an enemy issues
+  // a command (like a right-click on desktop).
+  onTap(sx: number, sy: number) {
+    this.audio.unlock();
+    if (this.phase === "select") {
+      const id = this.factionCardAt(sx, sy);
+      if (id) this.startGame(id);
+      return;
+    }
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const worldTap = !isInHud(sy, H) && !isInMinimap(sx, sy, W, H);
+    if (worldTap && !this.placement && !this.pendingPower && this.selected.length > 0) {
+      const w = this.camera.screenToWorld(sx, sy);
+      if (!this.pickOwnBuilding(w.x, w.y) && !this.pickOwnUnit(w.x, w.y)) {
+        this.onCommand(sx, sy, false);
+        return;
+      }
+    }
+    this.onSelect({ x: sx - 2, y: sy - 2, w: 4, h: 4 }, false);
+  }
+
+  private pickOwnUnit(wx: number, wy: number): Unit | null {
+    for (const u of this.units) {
+      if (!u.alive || u.team !== "player") continue;
+      if (dist2(wx, wy, u.x, u.y) <= (u.radius + 8) * (u.radius + 8)) return u;
+    }
+    return null;
+  }
+
   onHotkey(key: string) {
     this.audio.unlock();
     if (this.phase === "select") return;
