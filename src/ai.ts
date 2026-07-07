@@ -60,8 +60,12 @@ export class EnemyAI {
     if (this.buildCd <= 0) {
       this.buildCd = 3;
       const credits = this.game.credits["enemy"];
+      const sig = this.game.factions["enemy"].signature;
+      const sigB = sig ? (sig.building === "factory" ? factory : sig.building === "barracks" ? barracks : null) : null;
       if (harvesters < 2 && factory && factory.functional && factory.queue.length === 0) {
         this.tryQueue(factory, "harvester", credits);
+      } else if (sig && sigB && sigB.functional && sigB.queue.length < 2 && Math.random() < 0.3) {
+        this.tryQueue(sigB, sig.unit, credits);
       } else if (factory && factory.functional && factory.queue.length < 2 && Math.random() < 0.5) {
         this.tryQueue(factory, Math.random() < 0.35 ? "artillery" : "raptor", credits);
       } else if (barracks && barracks.functional && barracks.queue.length < 2) {

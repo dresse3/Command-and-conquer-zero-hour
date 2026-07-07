@@ -7,7 +7,15 @@ export const MAP_H = 60; // tiles
 
 export type Team = "player" | "enemy";
 
-export type UnitKind = "ranger" | "rocketeer" | "raptor" | "artillery" | "harvester";
+export type UnitKind =
+  | "ranger"
+  | "rocketeer"
+  | "raptor"
+  | "artillery"
+  | "harvester"
+  | "marksman"
+  | "overlord"
+  | "technical";
 export type BuildingKind = "command" | "power" | "barracks" | "factory" | "supply" | "turret";
 
 export interface UnitDef {
@@ -101,6 +109,52 @@ export const UNITS: Record<UnitKind, UnitDef> = {
     fireRate: 0,
     splash: 0,
     canGather: true,
+  },
+  // ---- faction signature units ----
+  marksman: {
+    kind: "marksman",
+    name: "Marksman",
+    cost: 350,
+    buildTime: 7,
+    maxHp: 90,
+    speed: 80,
+    radius: 9,
+    sight: 340,
+    range: 300,
+    damage: 65,
+    fireRate: 0.9,
+    splash: 0,
+    canGather: false,
+  },
+  overlord: {
+    kind: "overlord",
+    name: "Overlord Tank",
+    cost: 1400,
+    buildTime: 16,
+    maxHp: 900,
+    speed: 40,
+    radius: 18,
+    sight: 320,
+    range: 200,
+    damage: 80,
+    fireRate: 0.8,
+    splash: 12,
+    canGather: false,
+  },
+  technical: {
+    kind: "technical",
+    name: "Technical",
+    cost: 250,
+    buildTime: 4,
+    maxHp: 150,
+    speed: 130,
+    radius: 12,
+    sight: 300,
+    range: 150,
+    damage: 22,
+    fireRate: 1.8,
+    splash: 0,
+    canGather: false,
   },
 };
 
@@ -297,6 +351,8 @@ export interface FactionDef {
   artilleryBonus: number; // extra artillery strikes
   artilleryDamageMult: number;
   reinforceBonus: number; // extra reinforcement units
+  noPower: boolean; // structures work without a power grid
+  signature?: { building: BuildingKind; unit: UnitKind; hotkey: string };
   trait: string;
 }
 
@@ -315,7 +371,9 @@ export const FACTIONS: FactionDef[] = [
     artilleryBonus: 0,
     artilleryDamageMult: 1,
     reinforceBonus: 0,
-    trait: "Rapid command: general powers recharge 20% faster.",
+    noPower: false,
+    signature: { building: "barracks", unit: "marksman", hotkey: "M" },
+    trait: "Marksman snipers; general powers recharge 20% faster.",
   },
   {
     id: "legion",
@@ -331,7 +389,9 @@ export const FACTIONS: FactionDef[] = [
     artilleryBonus: 3,
     artilleryDamageMult: 1.3,
     reinforceBonus: 0,
-    trait: "Tougher, cheaper units and a devastating artillery barrage.",
+    noPower: false,
+    signature: { building: "factory", unit: "overlord", hotkey: "O" },
+    trait: "Overlord super-heavy tanks; tougher, cheaper units; brutal artillery.",
   },
   {
     id: "wolves",
@@ -347,7 +407,9 @@ export const FACTIONS: FactionDef[] = [
     artilleryBonus: 0,
     artilleryDamageMult: 1,
     reinforceBonus: 2,
-    trait: "Dirt-cheap, fast units and larger reinforcement drops.",
+    noPower: true,
+    signature: { building: "factory", unit: "technical", hotkey: "V" },
+    trait: "Fast Technicals; structures need no power; larger reinforcements.",
   },
 ];
 

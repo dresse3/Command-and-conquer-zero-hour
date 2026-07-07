@@ -41,6 +41,18 @@ npm run preview
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
 | **Esc** | Annullér placering / power / fjern markering |
 
+## Nyt i v0.7 — unikke faktions-enheder
+
+Faktionerne er ikke længere kun stat-varianter — hver har nu en **signatur-enhed** og en særtræk:
+
+| Faktion | Signatur-enhed | Særtræk |
+|---------|----------------|---------|
+| **Vanguard Coalition** | **Marksman** (sniper: meget lang rækkevidde, høj skade mod infanteri) | — |
+| **Iron Legion** | **Overlord Tank** (super-tungt panser, 900 HP, splash) | — |
+| **Desert Wolves** | **Technical** (hurtig, billig bevæbnet bil) | **Bygninger kræver ikke strøm** |
+
+Signatur-enheden dukker op i den relevante bygnings byg-menu (Barracks/War Factory) for den faktion. AI'en bygger også sin egen signatur-enhed.
+
 ## Nyt i v0.6 — faktioner
 
 Vælg en af tre asymmetriske faktioner før kampen (fjenden får en af de andre):
@@ -128,7 +140,8 @@ src/
 - [x] Veterangrader for enheder
 - [x] Smartere AI (rebuild, forsvar, brug af powers)
 - [x] Faktions-asymmetri (tre spilbare sider)
-- [ ] Flere unikke enheder/bygninger pr. faktion
+- [x] Signatur-enhed + særtræk pr. faktion
+- [ ] Unikke bygninger/upgrades pr. faktion
 - [ ] AI-genererede sprites (foto-realistisk løft)
 - [ ] Pak som desktop-app (Tauri/Electron) for native Win/Mac
 

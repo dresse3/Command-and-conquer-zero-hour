@@ -367,10 +367,11 @@ export class Game implements WorldApi, InputHandlers {
         used += b.def.powerUsed;
       }
       const net = provided - used;
-      if (team === "player" && net < 0 && this.power[team] >= 0) this.audio.lowPower();
+      const noPower = this.factions[team].noPower;
+      if (team === "player" && !noPower && net < 0 && this.power[team] >= 0) this.audio.lowPower();
       this.power[team] = net;
       for (const b of this.buildings) {
-        if (b.team === team) b.powered = net >= 0;
+        if (b.team === team) b.powered = noPower || net >= 0;
       }
     }
   }
@@ -565,7 +566,7 @@ export class Game implements WorldApi, InputHandlers {
     }
     // context production hotkey (matches selected building's menu)
     if (this.selectedBuilding) {
-      const entry = this.selectedBuilding.def.produces.find((e) => e.hotkey.toLowerCase() === key);
+      const entry = this.producesFor(this.selectedBuilding).find((e) => e.hotkey.toLowerCase() === key);
       if (entry) {
         this.requestBuild(entry);
         return;
@@ -593,8 +594,17 @@ export class Game implements WorldApi, InputHandlers {
     }
   }
 
+  // Build menu for a building, including this faction's signature unit.
+  producesFor(b: Building): BuildEntry[] {
+    const sig = this.factions[b.team].signature;
+    if (sig && sig.building === b.kind) {
+      return [...b.def.produces, { type: "unit", key: sig.unit, hotkey: sig.hotkey }];
+    }
+    return b.def.produces;
+  }
+
   currentBuildEntries(): BuildEntry[] {
-    return this.selectedBuilding ? this.selectedBuilding.def.produces : [];
+    return this.selectedBuilding ? this.producesFor(this.selectedBuilding) : [];
   }
 
   private moveFormation(wx: number, wy: number) {
@@ -691,7 +701,7 @@ export class Game implements WorldApi, InputHandlers {
     }
     // unit
     const b = this.selectedBuilding;
-    if (!b || !b.def.produces.some((e) => e.key === entry.key)) {
+    if (!b || !this.producesFor(b).some((e) => e.key === entry.key)) {
       this.showToast("Select the producing building");
       return;
     }

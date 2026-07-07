@@ -318,7 +318,8 @@ export class Renderer {
 
     switch (u.kind) {
       case "raptor":
-      case "artillery": {
+      case "artillery":
+      case "overlord": {
         const long = u.kind === "artillery";
         // hull (body facing movement)
         ctx.save();
@@ -354,6 +355,41 @@ export class Renderer {
         ctx.fillRect(-u.radius * 0.6, -u.radius * 0.6, u.radius * 1.2, u.radius * 1.2);
         ctx.fillStyle = "#2b2f38";
         ctx.fillRect(u.radius * 0.4, -u.radius * 0.4, u.radius * 0.8, u.radius * 0.8); // scoop
+        ctx.restore();
+        break;
+      }
+      case "technical": {
+        // fast light vehicle: open body, mounted gun on turretAngle
+        ctx.save();
+        ctx.translate(u.x, u.y);
+        ctx.rotate(u.angle);
+        ctx.fillStyle = "#1a1c22";
+        ctx.fillRect(-u.radius, -u.radius * 0.55, u.radius * 2, u.radius * 1.1);
+        ctx.fillStyle = main;
+        ctx.fillRect(-u.radius * 0.8, -u.radius * 0.4, u.radius * 1.4, u.radius * 0.8);
+        ctx.restore();
+        ctx.save();
+        ctx.translate(u.x, u.y);
+        ctx.rotate(u.turretAngle);
+        ctx.fillStyle = "#2b2f38";
+        ctx.fillRect(0, -1.5, u.radius + 5, 3);
+        ctx.restore();
+        break;
+      }
+      case "marksman": {
+        ctx.fillStyle = dark;
+        ctx.beginPath();
+        ctx.arc(u.x, u.y, u.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#a7d8a0"; // distinct light-green kit
+        ctx.beginPath();
+        ctx.arc(u.x, u.y, u.radius * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(u.x, u.y);
+        ctx.rotate(u.turretAngle);
+        ctx.fillStyle = "#20242c";
+        ctx.fillRect(0, -1.2, u.radius + 11, 2.4); // long sniper barrel
         ctx.restore();
         break;
       }
@@ -476,9 +512,14 @@ export class Renderer {
     ctx.fillText(`⛃ ${Math.floor(game.credits["player"])}`, 16, 21);
 
     const pw = game.power["player"];
-    ctx.fillStyle = pw >= 0 ? "#7dd3fc" : "#ef4444";
     ctx.font = "bold 15px system-ui, sans-serif";
-    ctx.fillText(`⚡ ${pw >= 0 ? "+" : ""}${pw}`, 150, 21);
+    if (game.factions["player"].noPower) {
+      ctx.fillStyle = "#7ec46b";
+      ctx.fillText("⚡ n/a", 150, 21);
+    } else {
+      ctx.fillStyle = pw >= 0 ? "#7dd3fc" : "#ef4444";
+      ctx.fillText(`⚡ ${pw >= 0 ? "+" : ""}${pw}`, 150, 21);
+    }
 
     const pts = game.promoPoints["player"];
     ctx.fillStyle = pts > 0 ? "#facc15" : "#8a8f99";
