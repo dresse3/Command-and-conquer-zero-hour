@@ -25,6 +25,7 @@ export class EnemyAI {
     // anchor on the command center, but keep operating from any building
     const base = this.game.baseOf("enemy") ?? this.game.anyBuilding("enemy");
     if (!base) return;
+    const cfg = this.game.aiConfig; // difficulty-scaled behaviour
     this.buildCd -= dt;
     this.attackCd -= dt;
     this.economyCd -= dt;
@@ -36,19 +37,21 @@ export class EnemyAI {
     const barracks = this.prod("barracks");
     const army = mine.filter((u) => u.def.damage > 0);
 
-    // spend promotion points on powers (artillery first, then reinforcements)
-    const pts = this.game.promoPoints["enemy"];
-    if (pts >= POWER_POINT_COST.artillery && !this.game.enemyPowers.isUnlocked("artillery")) {
-      this.game.promoPoints["enemy"] -= POWER_POINT_COST.artillery;
-      this.game.enemyPowers.unlock("artillery");
-    } else if (pts >= POWER_POINT_COST.reinforce && !this.game.enemyPowers.isUnlocked("reinforce")) {
-      this.game.promoPoints["enemy"] -= POWER_POINT_COST.reinforce;
-      this.game.enemyPowers.unlock("reinforce");
+    // spend promotion points on powers (only on difficulties that use them)
+    if (cfg.usePowers) {
+      const pts = this.game.promoPoints["enemy"];
+      if (pts >= POWER_POINT_COST.artillery && !this.game.enemyPowers.isUnlocked("artillery")) {
+        this.game.promoPoints["enemy"] -= POWER_POINT_COST.artillery;
+        this.game.enemyPowers.unlock("artillery");
+      } else if (pts >= POWER_POINT_COST.reinforce && !this.game.enemyPowers.isUnlocked("reinforce")) {
+        this.game.promoPoints["enemy"] -= POWER_POINT_COST.reinforce;
+        this.game.enemyPowers.unlock("reinforce");
+      }
     }
 
     // economy / base upkeep
     if (this.economyCd <= 0) {
-      this.economyCd = 5;
+      this.economyCd = cfg.economyInterval;
       if (this.game.power["enemy"] < 0) {
         this.game.tryAiBuild("enemy", "power");
       } else if (this.count("turret") < 2 && Math.random() < 0.5) {
@@ -60,17 +63,18 @@ export class EnemyAI {
 
     // production
     if (this.buildCd <= 0) {
-      this.buildCd = 3;
+      this.buildCd = cfg.buildInterval;
       const credits = this.game.credits["enemy"];
+      const q = cfg.maxProdQueue;
       const sig = this.game.factions["enemy"].signature;
       const sigB = sig ? (sig.building === "factory" ? factory : sig.building === "barracks" ? barracks : null) : null;
       if (harvesters < 2 && factory && factory.functional && factory.queue.length === 0) {
         this.tryQueue(factory, "harvester", credits);
-      } else if (sig && sigB && sigB.functional && sigB.queue.length < 2 && Math.random() < 0.3) {
+      } else if (sig && sigB && sigB.functional && sigB.queue.length < q && Math.random() < 0.3) {
         this.tryQueue(sigB, sig.unit, credits);
-      } else if (factory && factory.functional && factory.queue.length < 2 && Math.random() < 0.5) {
+      } else if (factory && factory.functional && factory.queue.length < q && Math.random() < 0.5) {
         this.tryQueue(factory, Math.random() < 0.35 ? "artillery" : "raptor", credits);
-      } else if (barracks && barracks.functional && barracks.queue.length < 2) {
+      } else if (barracks && barracks.functional && barracks.queue.length < q) {
         this.tryQueue(barracks, Math.random() < 0.4 ? "rocketeer" : "ranger", credits);
       }
     }
@@ -83,9 +87,9 @@ export class EnemyAI {
         if (d > 260) u.moveTo(this.game, base.rally.x + (Math.random() - 0.5) * 80, base.rally.y, true);
       }
     } else if (this.attackCd <= 0) {
-      this.attackCd = 32;
+      this.attackCd = cfg.attackInterval;
       const target = this.game.playerBase() ?? this.game.anyBuilding("player");
-      if (army.length >= 5 && target) {
+      if (army.length >= cfg.attackArmy && target) {
         for (const u of army) {
           u.moveTo(this.game, target.x + (Math.random() - 0.5) * 150, target.y + (Math.random() - 0.5) * 150, true);
         }
@@ -93,7 +97,7 @@ export class EnemyAI {
     }
 
     // superweapon: artillery on the player
-    if (this.powerCd <= 0 && this.game.enemyPowers.canFire("artillery")) {
+    if (cfg.usePowers && this.powerCd <= 0 && this.game.enemyPowers.canFire("artillery")) {
       this.powerCd = 8;
       const tgt = this.bestArtilleryTarget();
       if (tgt) this.game.enemyPowers.fire("artillery", tgt.x, tgt.y, this.game, "enemy");

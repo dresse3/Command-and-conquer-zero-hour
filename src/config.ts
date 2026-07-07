@@ -385,6 +385,57 @@ export const ATTACK_ALARM_COOLDOWN = 9; // seconds between "under attack" alerts
 
 export const START_CREDITS = 2000;
 
+// ---- AI difficulty ----
+export type Difficulty = "easy" | "medium" | "hard";
+
+export interface AIConfig {
+  label: string;
+  blurb: string;
+  incomeMult: number; // multiplier on the AI's harvested income
+  buildInterval: number; // seconds between production decisions
+  economyInterval: number; // seconds between base-upkeep decisions
+  attackArmy: number; // combat units needed before it pushes out
+  attackInterval: number; // seconds between attack waves
+  usePowers: boolean; // whether it spends promotion points on powers
+  maxProdQueue: number; // how many units it will queue at once
+}
+
+export const AI_CONFIGS: Record<Difficulty, AIConfig> = {
+  easy: {
+    label: "Easy",
+    blurb: "Passive economy, small late attacks, no superweapons.",
+    incomeMult: 0.7,
+    buildInterval: 5,
+    economyInterval: 8,
+    attackArmy: 9,
+    attackInterval: 55,
+    usePowers: false,
+    maxProdQueue: 1,
+  },
+  medium: {
+    label: "Medium",
+    blurb: "A balanced opponent that fights back and uses its powers.",
+    incomeMult: 1,
+    buildInterval: 3,
+    economyInterval: 5,
+    attackArmy: 5,
+    attackInterval: 32,
+    usePowers: true,
+    maxProdQueue: 2,
+  },
+  hard: {
+    label: "Hard",
+    blurb: "Rich economy, relentless waves and aggressive superweapons.",
+    incomeMult: 1.35,
+    buildInterval: 2,
+    economyInterval: 3.5,
+    attackArmy: 4,
+    attackInterval: 22,
+    usePowers: true,
+    maxProdQueue: 3,
+  },
+};
+
 // Veterancy: index 0 rookie, 1 veteran, 2 elite
 export const VET_KILLS = [2, 5]; // kills needed to reach veteran, then elite
 export const VET_DAMAGE = [1, 1.25, 1.55];
@@ -403,17 +454,19 @@ export interface PowerDef {
 }
 
 export const POWERS: Record<PowerKind, PowerDef> = {
-  artillery: { kind: "artillery", name: "Artillery Barrage", hotkey: "Z", cooldown: 50, startCharge: 25 },
-  airstrike: { kind: "airstrike", name: "Airstrike", hotkey: "X", cooldown: 65, startCharge: 20 },
-  reinforce: { kind: "reinforce", name: "Reinforcements", hotkey: "C", cooldown: 80, startCharge: 30 },
+  artillery: { kind: "artillery", name: "Artillery Barrage", hotkey: "Z", cooldown: 90, startCharge: 0 },
+  airstrike: { kind: "airstrike", name: "Airstrike", hotkey: "X", cooldown: 110, startCharge: 0 },
+  reinforce: { kind: "reinforce", name: "Reinforcements", hotkey: "C", cooldown: 120, startCharge: 0 },
 };
 
 export const POWER_ORDER: PowerKind[] = ["artillery", "airstrike", "reinforce"];
 
 // Promotion: earn XP by destroying enemy units/buildings; each threshold grants
 // one promotion point, spent to unlock a general power. Powers are NOT free.
-export const POWER_POINT_COST: Record<PowerKind, number> = { artillery: 1, airstrike: 2, reinforce: 1 };
-export const PROMO_THRESHOLDS = [120, 320, 640, 1100, 1700]; // cumulative XP per point
+export const POWER_POINT_COST: Record<PowerKind, number> = { artillery: 2, airstrike: 3, reinforce: 2 };
+// Promotion points come much later now — you must fight a real war to earn them,
+// so general powers are a mid/late-game payoff rather than an early crutch.
+export const PROMO_THRESHOLDS = [400, 900, 1600, 2600, 4000]; // cumulative XP per point
 
 // Refund fraction when selling a building
 export const SELL_REFUND = 0.5;
