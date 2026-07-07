@@ -41,6 +41,15 @@ npm run preview
 | **K** eller SELL-knap | Sælg valgt bygning (50% refusion) |
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
 | **Esc** | Annullér placering / power / fjern markering |
+| **Play Again** (efter sejr/nederlag) | Start en ny kamp med nyt kort og ny modstander |
+
+## Nyt i v1.0 — færdig udgivelse 🎉
+
+Første fulde udgivelse. Alt fra v0.1–v0.9.2 samlet i et komplet, spilbart spil:
+
+- **Spil igen uden at genindlæse:** sejr/nederlag-skærmen har nu en **Play Again-knap**. Et klik (eller tap) rydder kampen og fører dig tilbage til faktions-vælgeren — et helt nyt kort og en ny modstander hver gang, uden at opdatere siden.
+- Sejr/nederlag-overlayet er pudset af med tydelig besked og en rigtig knap i stedet for "genindlæs siden".
+- Fungerer identisk på **Windows, macOS, Linux** og **touch** (iPad/iPhone) — mus/tastatur og fingre bruger samme knap.
 
 ## Nyt i v0.9.2 — iOS Safari safe-area & fuldskærm
 

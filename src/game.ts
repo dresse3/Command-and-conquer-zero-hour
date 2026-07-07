@@ -112,6 +112,52 @@ export class Game implements WorldApi, InputHandlers {
     this.showToast(`${pf.name} vs ${ef.name} — ${pf.trait}`);
   }
 
+  // Tear the match down and return to the faction-select screen so the player
+  // can start a fresh game (new random map + enemy) without reloading the page.
+  restart() {
+    this.grid = new Grid();
+    this.units = [];
+    this.buildings = [];
+    this.supplyFields = [];
+    this.projectiles = [];
+    this.effects = new ParticleSystem();
+    this.credits = { player: START_CREDITS, enemy: START_CREDITS };
+    this.power = { player: 0, enemy: 0 };
+    this.selected = [];
+    this.selectedBuilding = null;
+    this.groups = {};
+    this.placement = null;
+    this.pendingAttackMove = false;
+    this.pendingPower = null;
+    this.fog = new VisibilityMap(MAP_W, MAP_H);
+    this.playerPowers = new PowerManager();
+    this.enemyPowers = new PowerManager();
+    this.fogCd = 0;
+    this.xp = { player: 0, enemy: 0 };
+    this.promoPoints = { player: 0, enemy: 0 };
+    this.promoGiven = { player: 0, enemy: 0 };
+    this.upgrades = { player: new Set(), enemy: new Set() };
+    this.status = "playing";
+    this.phase = "select";
+    this.ai = null;
+    this.toast = "";
+    this.toastCd = 0;
+  }
+
+  // The "Play Again" button on the victory/defeat overlay. Shared by the
+  // renderer (to draw it) and input (to hit-test taps/clicks).
+  endButtonRect(canvasW: number, canvasH: number) {
+    const w = Math.min(260, Math.round(canvasW * 0.6));
+    const h = 52;
+    return { x: (canvasW - w) / 2, y: canvasH / 2 + 40, w, h };
+  }
+
+  private hitEndButton(px: number, py: number): boolean {
+    if (this.status === "playing") return false;
+    const r = this.endButtonRect(this.canvas.width, this.canvas.height);
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  }
+
   // Layout for the three faction cards on the select screen.
   factionCardRects(canvasW: number, canvasH: number) {
     const n = FACTIONS.length;
@@ -423,6 +469,10 @@ export class Game implements WorldApi, InputHandlers {
   // ---------------- input handlers ----------------
   onSelect(rect: { x: number; y: number; w: number; h: number }, additive: boolean) {
     this.audio.unlock();
+    if (this.status !== "playing") {
+      if (this.hitEndButton(rect.x + rect.w / 2, rect.y + rect.h / 2)) this.restart();
+      return;
+    }
     if (this.phase === "select") {
       const id = this.factionCardAt(rect.x + rect.w / 2, rect.y + rect.h / 2);
       if (id) this.startGame(id);
@@ -583,6 +633,10 @@ export class Game implements WorldApi, InputHandlers {
   // a command (like a right-click on desktop).
   onTap(sx: number, sy: number) {
     this.audio.unlock();
+    if (this.status !== "playing") {
+      if (this.hitEndButton(sx, sy)) this.restart();
+      return;
+    }
     if (this.phase === "select") {
       const id = this.factionCardAt(sx, sy);
       if (id) this.startGame(id);
