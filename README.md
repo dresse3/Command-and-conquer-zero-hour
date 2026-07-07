@@ -7,6 +7,7 @@ Skrevet i TypeScript med Canvas 2D. Kører identisk på **Windows og macOS** (og
 > Faktioner, enheder og grafik er egne. Mekanikkerne er genskabt som design, ikke kopieret.
 
 ## Kør spillet
+https://dresse3.github.io/Command-and-conquer-zero-hour/
 
 ```bash
 npm install
