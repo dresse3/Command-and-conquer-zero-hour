@@ -24,14 +24,26 @@
       }
       #game {
         display: block;
-        width: 100vw;
-        height: 100vh;
+        position: fixed;
+        top: 0;
+        left: 0;
         cursor: crosshair;
         image-rendering: pixelated;
         touch-action: none; /* we handle all gestures ourselves */
       }
+      /* zero-size probes used to read the device safe-area insets in JS */
+      #ins-top,
+      #ins-bottom {
+        position: fixed;
+        left: 0;
+        width: 0;
+        pointer-events: none;
+        visibility: hidden;
+      }
+      #ins-top { top: 0; height: env(safe-area-inset-top, 0px); }
+      #ins-bottom { bottom: 0; height: env(safe-area-inset-bottom, 0px); }
       #loading {
-        position: absolute;
+        position: fixed;
         inset: 0;
         display: flex;
         align-items: center;
@@ -45,6 +57,8 @@
   </head>
   <body>
     <canvas id="game"></canvas>
+    <div id="ins-top"></div>
+    <div id="ins-bottom"></div>
     <div id="loading">INITIALIZING BATTLEFIELD…</div>
     <script type="module" src="/src/main.ts"></script>
   </body>

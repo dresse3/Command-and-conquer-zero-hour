@@ -41,6 +41,12 @@ npm run preview
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
 | **Esc** | Annullér placering / power / fjern markering |
 
+## Nyt i v0.9.2 — iOS Safari safe-area & fuldskærm
+
+- Canvas følger nu det **faktisk synlige område** (`visualViewport`) i stedet for `100vh`, så Safaris top-adresselinje og bund-værktøjslinje ikke længere skærer HUD'en af i bunden.
+- **Safe-area-insets** respekteres (notch / home-indicator), så knapperne ikke gemmer sig bag systemets kanter.
+- **Bedste oplevelse på iPad:** åbn siden i Safari → Del-knappen → **"Føj til hjemmeskærm"**. Så starter den fuldskærm som en app, helt uden Safari-bjælker.
+
 ## Nyt i v0.9.1 — tablet-polish & bugfixes
 
 - **Responsiv HUD:** bundbjælken er lagt om i to rækker (navn/kø/sælg øverst, knapper nederst). Byg-knapperne skalerer til skærmbredden og overlapper aldrig sælg-/power-knapperne — fikser at knapperne lå oven i hinanden på 11" iPad.

@@ -3,13 +3,26 @@ import { Renderer } from "./renderer";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const loading = document.getElementById("loading");
+const insTop = document.getElementById("ins-top");
+const insBottom = document.getElementById("ins-bottom");
 
+// Fit the canvas to the *visible* area. On iOS Safari the visual viewport
+// excludes the browser toolbars, and safe-area insets keep the HUD clear of
+// the notch / home indicator (especially when added to the Home Screen).
 function resizeCanvas(game?: Game) {
-  // Canvas backing store == CSS size (1:1). Mouse and world math all share
-  // one coordinate space, which keeps input/selection dead simple.
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  if (game) game.resize(canvas.width, canvas.height);
+  const vv = window.visualViewport;
+  const vw = Math.round(vv?.width ?? window.innerWidth);
+  const vh = Math.round(vv?.height ?? window.innerHeight);
+  const top = insTop?.offsetHeight ?? 0;
+  const bottom = insBottom?.offsetHeight ?? 0;
+  const w = vw;
+  const h = Math.max(200, vh - top - bottom);
+  canvas.width = w;
+  canvas.height = h;
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  canvas.style.top = top + "px";
+  if (game) game.resize(w, h);
 }
 
 resizeCanvas();
@@ -20,7 +33,13 @@ const renderer = new Renderer(canvas);
 // Dev-only inspection handle (stripped from production builds).
 if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
 
-window.addEventListener("resize", () => resizeCanvas(game));
+const onResize = () => resizeCanvas(game);
+window.addEventListener("resize", onResize);
+window.addEventListener("orientationchange", onResize);
+window.visualViewport?.addEventListener("resize", onResize);
+window.visualViewport?.addEventListener("scroll", onResize);
+// Safari settles its toolbars a beat after load / rotation
+setTimeout(onResize, 300);
 
 if (loading) loading.remove();
 
