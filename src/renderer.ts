@@ -904,6 +904,18 @@ export class Renderer {
     if (line) ctx.fillText(line, x, yy);
   }
 
+  // Build a rounded-rect path on the current context (caller fills/strokes).
+  private roundRect(x: number, y: number, w: number, h: number, r: number) {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
   private drawEndScreen(game: Game) {
     const ctx = this.ctx;
     const W = this.canvas.width;
@@ -911,12 +923,32 @@ export class Renderer {
     ctx.fillStyle = "rgba(0,0,0,0.65)";
     ctx.fillRect(0, 0, W, H);
     ctx.textAlign = "center";
-    ctx.fillStyle = game.status === "won" ? "#4ade80" : "#ef4565";
+    const won = game.status === "won";
+    ctx.fillStyle = won ? "#4ade80" : "#ef4565";
     ctx.font = "bold 56px system-ui, sans-serif";
-    ctx.fillText(game.status === "won" ? "VICTORY" : "DEFEAT", W / 2, H / 2 - 20);
+    ctx.fillText(won ? "VICTORY" : "DEFEAT", W / 2, H / 2 - 40);
     ctx.fillStyle = "#e2e8f0";
     ctx.font = "18px system-ui, sans-serif";
-    ctx.fillText("Refresh the page to play again", W / 2, H / 2 + 24);
+    ctx.fillText(
+      won ? "The enemy base has been destroyed." : "Your base has fallen.",
+      W / 2,
+      H / 2 - 2
+    );
+
+    // Play Again button
+    const r = game.endButtonRect(W, H);
+    ctx.fillStyle = won ? "#16a34a" : "#dc2626";
+    this.roundRect(r.x, r.y, r.w, r.h, 10);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 2;
+    this.roundRect(r.x, r.y, r.w, r.h, 10);
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 22px system-ui, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Play Again", r.x + r.w / 2, r.y + r.h / 2 + 1);
+    ctx.textBaseline = "alphabetic";
     ctx.textAlign = "left";
   }
 }
