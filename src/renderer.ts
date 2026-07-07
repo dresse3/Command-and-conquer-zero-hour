@@ -1,15 +1,25 @@
 import { TILE, COLORS, UNITS, BUILDINGS, POWERS, POWER_POINT_COST, SELL_REFUND, UPGRADES, type BuildEntry } from "./config";
 import type { Game } from "./game";
 import { Unit, Building } from "./entities";
-import { buttonRects, powerButtonRects, sellButtonRect, HUD_HEIGHT, minimapRect, worldToMinimap } from "./hud";
+import { buttonRects, powerButtonRects, sellButtonRect, topRowY, HUD_HEIGHT, minimapRect, worldToMinimap } from "./hud";
 
 export class Renderer {
   ctx: CanvasRenderingContext2D;
+
+  private touch = typeof navigator !== "undefined" && (navigator.maxTouchPoints || 0) > 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2D canvas context unavailable");
     this.ctx = ctx;
+  }
+
+  // truncate text with an ellipsis so it fits within maxW
+  private fit(text: string, maxW: number): string {
+    if (this.ctx.measureText(text).width <= maxW) return text;
+    let s = text;
+    while (s.length > 1 && this.ctx.measureText(s + "…").width > maxW) s = s.slice(0, -1);
+    return s + "…";
   }
 
   draw(game: Game) {
@@ -541,7 +551,11 @@ export class Renderer {
 
     ctx.fillStyle = "#94a3b8";
     ctx.textAlign = "right";
-    ctx.fillText("Arrows/edges: pan · wheel: zoom · A: attack-move · Z/X/C: powers · K: sell · ★ = promotion points", W - 16, 21);
+    const hint =
+      this.touch || W < 1180
+        ? "Tap: select / order · drag: box-select · 2 fingers: pan · pinch: zoom"
+        : "Arrows: pan · wheel: zoom · A: attack-move · Z/X/C: powers · K: sell";
+    ctx.fillText(hint, W - 16, 21);
     ctx.textAlign = "left";
 
     ctx.fillStyle = "rgba(10,12,16,0.92)";
@@ -551,37 +565,44 @@ export class Renderer {
 
     const sel = game.selectedBuilding;
     const entries = game.currentBuildEntries();
+    const tY = topRowY(H);
+    ctx.textBaseline = "middle";
     if (!sel) {
       ctx.fillStyle = "#64748b";
       ctx.font = "14px system-ui, sans-serif";
-      ctx.fillText("Select a building (click it) to build units or structures.", 20, H - HUD_HEIGHT / 2);
+      ctx.fillText(
+        this.touch ? "Tap a building to build units or structures." : "Select a building to build units or structures.",
+        20,
+        H - HUD_HEIGHT / 2,
+      );
     } else {
+      // top row: building name + production queue + sell
       ctx.fillStyle = "#e2e8f0";
       ctx.font = "bold 13px system-ui, sans-serif";
-      ctx.fillText(sel.def.name.toUpperCase(), 16, H - HUD_HEIGHT + 14);
-      for (const rect of buttonRects(entries, H)) this.drawBuildButton(ctx, game, rect.entry, rect.x, rect.y, rect.w, rect.h);
-      if (sel.team === "player") this.drawSellButton(sel);
+      const upper = sel.def.name.toUpperCase();
+      ctx.fillText(upper, 16, tY + 12);
       if (sel.queue.length > 0) {
-        const qx = 16 + entries.length * 112 + 16;
-        const qy = H - HUD_HEIGHT + 18;
-        ctx.fillStyle = "#cbd5e1";
-        ctx.font = "12px system-ui, sans-serif";
-        ctx.fillText("Queue", qx, qy);
-        sel.queue.forEach((item, i) => {
-          const bx = qx + i * 44;
-          const by = qy + 12;
+        const qx = 16 + ctx.measureText(upper).width + 20;
+        sel.queue.slice(0, 6).forEach((item, i) => {
+          const bx = qx + i * 26;
           ctx.fillStyle = "rgba(255,255,255,0.1)";
-          ctx.fillRect(bx, by, 38, 38);
+          ctx.fillRect(bx, tY, 22, 22);
           const prog = 1 - item.timeLeft / item.total;
-          ctx.fillStyle = "rgba(61,169,252,0.5)";
-          ctx.fillRect(bx, by + 38 - 38 * prog, 38, 38 * prog);
+          ctx.fillStyle = "rgba(61,169,252,0.55)";
+          ctx.fillRect(bx, tY + 22 - 22 * prog, 22, 22 * prog);
           ctx.strokeStyle = "rgba(255,255,255,0.25)";
-          ctx.strokeRect(bx, by, 38, 38);
+          ctx.strokeRect(bx, tY, 22, 22);
           ctx.fillStyle = "#e2e8f0";
           ctx.font = "9px system-ui, sans-serif";
-          ctx.fillText(UNITS[item.kind].name.slice(0, 7), bx + 2, by + 21);
+          ctx.textAlign = "center";
+          ctx.fillText(UNITS[item.kind].name.slice(0, 3), bx + 11, tY + 11);
+          ctx.textAlign = "left";
+          ctx.font = "bold 13px system-ui, sans-serif";
         });
       }
+      // main row: build buttons
+      for (const rect of buttonRects(entries, W, H)) this.drawBuildButton(ctx, game, rect.entry, rect.x, rect.y, rect.w, rect.h);
+      if (sel.team === "player") this.drawSellButton(sel);
     }
 
     this.drawPowerButtons(game);
@@ -640,13 +661,13 @@ export class Renderer {
     ctx.fillStyle = affordable ? "#e2e8f0" : "#7a8290";
     ctx.font = "bold 12px system-ui, sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(name, x + 7, y + 15);
+    ctx.fillText(this.fit(name, w - 12), x + 7, y + 15);
     ctx.fillStyle = COLORS.supply;
     ctx.font = "12px system-ui, sans-serif";
     ctx.fillText(`⛃ ${cost}`, x + 7, y + 34);
     ctx.fillStyle = isUpg ? "#e6c34a" : "#94a3b8";
     ctx.font = "10px system-ui, sans-serif";
-    ctx.fillText(`[${entry.hotkey}] ${tag}`, x + 7, y + 51);
+    ctx.fillText(this.fit(`[${entry.hotkey}] ${tag}`, w - 12), x + 7, y + 51);
   }
 
   private drawPowerButtons(game: Game) {
@@ -805,33 +826,36 @@ export class Renderer {
     ctx.fillStyle = "#0b0e14";
     ctx.fillRect(0, 0, W, H);
 
+    const cards = game.factionCardRects(W, H);
+    const topY = cards.length ? cards[0].y : H / 2;
+
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
     ctx.fillStyle = "#e6c34a";
-    ctx.font = "bold 40px system-ui, sans-serif";
-    ctx.fillText("CHOOSE YOUR FACTION", W / 2, H / 2 - 240);
+    ctx.font = `bold ${Math.min(40, Math.round(W * 0.035))}px system-ui, sans-serif`;
+    ctx.fillText("CHOOSE YOUR FACTION", W / 2, topY - 48);
     ctx.fillStyle = "#94a3b8";
-    ctx.font = "16px system-ui, sans-serif";
-    ctx.fillText("Each side plays differently. Your enemy will take one of the others.", W / 2, H / 2 - 210);
+    ctx.font = "15px system-ui, sans-serif";
+    ctx.fillText("Each side plays differently — your enemy takes one of the others.", W / 2, topY - 22);
 
-    for (const c of game.factionCardRects(W, H)) {
+    const cta = this.touch ? "▶ TAP TO PLAY" : "▶ CLICK TO PLAY";
+    for (const c of cards) {
       const f = c.f;
       ctx.fillStyle = "rgba(255,255,255,0.04)";
       ctx.fillRect(c.x, c.y, c.w, c.h);
       ctx.strokeStyle = f.color;
       ctx.lineWidth = 2;
       ctx.strokeRect(c.x, c.y, c.w, c.h);
-      // color banner
       ctx.fillStyle = f.color;
       ctx.fillRect(c.x, c.y, c.w, 8);
 
       ctx.textAlign = "center";
       ctx.fillStyle = f.color;
-      ctx.font = "bold 24px system-ui, sans-serif";
-      ctx.fillText(f.name, c.x + c.w / 2, c.y + 52);
+      ctx.font = "bold 22px system-ui, sans-serif";
+      ctx.fillText(this.fit(f.name, c.w - 20), c.x + c.w / 2, c.y + 42);
       ctx.fillStyle = "#cbd5e1";
-      ctx.font = "italic 14px system-ui, sans-serif";
-      ctx.fillText(f.blurb, c.x + c.w / 2, c.y + 78);
+      ctx.font = "italic 13px system-ui, sans-serif";
+      ctx.fillText(this.fit(f.blurb, c.w - 20), c.x + c.w / 2, c.y + 64);
 
       ctx.textAlign = "left";
       ctx.font = "13px system-ui, sans-serif";
@@ -843,16 +867,17 @@ export class Renderer {
         `Speed:      ${this.pct(f.speedMult)}`,
         `Damage:     ${this.pct(f.damageMult)}`,
       ];
-      stats.forEach((s, i) => ctx.fillText(s, c.x + 22, c.y + 120 + i * 26));
+      const sp = Math.min(24, (c.h - 150) / stats.length);
+      stats.forEach((s, i) => ctx.fillText(s, c.x + 20, c.y + 96 + i * sp));
 
       ctx.fillStyle = f.color;
       ctx.font = "bold 12px system-ui, sans-serif";
-      this.wrapText(ctx, f.trait, c.x + 22, c.y + 262, c.w - 44, 17);
+      this.wrapText(ctx, f.trait, c.x + 20, c.y + c.h - 52, c.w - 40, 16);
 
       ctx.textAlign = "center";
       ctx.fillStyle = f.color;
       ctx.font = "bold 15px system-ui, sans-serif";
-      ctx.fillText("▶ CLICK TO PLAY", c.x + c.w / 2, c.y + c.h - 16);
+      ctx.fillText(cta, c.x + c.w / 2, c.y + c.h - 14);
     }
     ctx.textAlign = "left";
   }

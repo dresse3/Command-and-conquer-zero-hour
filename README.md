@@ -41,6 +41,14 @@ npm run preview
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
 | **Esc** | Annullér placering / power / fjern markering |
 
+## Nyt i v0.9.1 — tablet-polish & bugfixes
+
+- **Responsiv HUD:** bundbjælken er lagt om i to rækker (navn/kø/sælg øverst, knapper nederst). Byg-knapperne skalerer til skærmbredden og overlapper aldrig sælg-/power-knapperne — fikser at knapperne lå oven i hinanden på 11" iPad.
+- **Sælg-knappen** flyttet til øverste række, fri af byg-knapperne.
+- **Minimap** skalerer ned på mindre skærme; faktions-vælgeren tilpasser sig skærmbredden.
+- **Touch-fix:** edge-scroll (kant-panorering) slås fra på touch — før kunne kortet panorere i det uendelige efter et tryk nær kanten.
+- Kontekst-hints viser touch-gestures på tablet/mobil i stedet for tastatur-genveje.
+
 ## Nyt i v0.9 — spilbar på iPad & touch
 
 Spillet er nu spilbart på **iPad, iPhone og touch-skærme** direkte i browseren (samme cross-platform-ånd som Apple-porten af Generals, men i vores egen kode):

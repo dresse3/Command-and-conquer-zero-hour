@@ -85,6 +85,7 @@ export class Game implements WorldApi, InputHandlers {
 
   private ai: EnemyAI | null = null;
   input: Input;
+  readonly isTouch = typeof navigator !== "undefined" && (navigator.maxTouchPoints || 0) > 0;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.input = new Input(canvas, this);
@@ -113,12 +114,14 @@ export class Game implements WorldApi, InputHandlers {
 
   // Layout for the three faction cards on the select screen.
   factionCardRects(canvasW: number, canvasH: number) {
-    const w = 300;
-    const h = 320;
-    const gap = 30;
-    const total = FACTIONS.length * w + (FACTIONS.length - 1) * gap;
+    const n = FACTIONS.length;
+    const gap = Math.max(14, Math.round(canvasW * 0.02));
+    // scale card width to fit the viewport (with margins), capped at 300
+    const w = Math.min(300, Math.floor((canvasW - 48 - (n - 1) * gap) / n));
+    const h = Math.min(320, Math.max(240, Math.round(canvasH * 0.5)));
+    const total = n * w + (n - 1) * gap;
     const startX = (canvasW - total) / 2;
-    const y = (canvasH - h) / 2;
+    const y = (canvasH - h) / 2 + 10;
     return FACTIONS.map((f, i) => ({ f, x: startX + i * (w + gap), y, w, h }));
   }
 
@@ -463,7 +466,7 @@ export class Game implements WorldApi, InputHandlers {
         return;
       }
       const entries = this.currentBuildEntries();
-      const entry = hudHitTest(cx, cy, entries, this.canvas.height);
+      const entry = hudHitTest(cx, cy, entries, this.canvas.width, this.canvas.height);
       if (entry) this.requestBuild(entry);
       return;
     }
@@ -991,14 +994,18 @@ export class Game implements WorldApi, InputHandlers {
     if (k.has("arrowleft")) dx -= 1;
     if (k.has("arrowright")) dx += 1;
 
-    const edge = 24;
-    const mx = this.input.mouseX;
-    const my = this.input.mouseY;
-    if (mx >= 0 && mx <= this.canvas.width && my >= 0 && my <= this.canvas.height) {
-      if (mx < edge) dx -= 1;
-      else if (mx > this.canvas.width - edge) dx += 1;
-      if (my < edge) dy -= 1;
-      else if (my > this.canvas.height - edge) dy += 1;
+    // Edge-scroll only with a real pointer — on touch the "mouse" position is
+    // the last finger position, which would scroll the map forever near a edge.
+    if (!this.isTouch) {
+      const edge = 24;
+      const mx = this.input.mouseX;
+      const my = this.input.mouseY;
+      if (mx >= 0 && mx <= this.canvas.width && my >= 0 && my <= this.canvas.height) {
+        if (mx < edge) dx -= 1;
+        else if (mx > this.canvas.width - edge) dx += 1;
+        if (my < edge) dy -= 1;
+        else if (my > this.canvas.height - edge) dy += 1;
+      }
     }
 
     if (dx !== 0 || dy !== 0) {

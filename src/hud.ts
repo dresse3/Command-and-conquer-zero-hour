@@ -1,10 +1,20 @@
 import { MAP_W, MAP_H, TILE, POWER_ORDER, type BuildEntry, type PowerKind } from "./config";
 
-export const HUD_HEIGHT = 96;
-export const MINIMAP_SIZE = 176;
+export const HUD_HEIGHT = 104;
 const MINIMAP_MARGIN = 10;
 const WORLD_W = MAP_W * TILE;
 const WORLD_H = MAP_H * TILE;
+
+// bottom bar has two rows: a thin top row (name / queue / sell) and the main
+// button row. Everything is laid out relative to the canvas width so nothing
+// overlaps on tablet/narrow screens.
+const BUTTON_H = 56;
+function mainRowY(H: number): number {
+  return H - HUD_HEIGHT + 40;
+}
+export function topRowY(H: number): number {
+  return H - HUD_HEIGHT + 7;
+}
 
 export interface ButtonRect {
   entry: BuildEntry;
@@ -14,17 +24,29 @@ export interface ButtonRect {
   h: number;
 }
 
-export function buttonRects(entries: BuildEntry[], canvasH: number): ButtonRect[] {
-  const bw = 104;
-  const bh = 64;
+export function buttonRects(entries: BuildEntry[], canvasW: number, canvasH: number): ButtonRect[] {
+  const n = entries.length;
+  if (n === 0) return [];
   const gap = 8;
   const startX = 16;
-  const y = canvasH - HUD_HEIGHT + (HUD_HEIGHT - bh) / 2;
-  return entries.map((entry, i) => ({ entry, x: startX + i * (bw + gap), y, w: bw, h: bh }));
+  const powers = powerButtonRects(canvasW, canvasH);
+  const rightBound = (powers.length ? powers[0].x : canvasW - 200) - 12;
+  const avail = rightBound - startX;
+  // fit N buttons into the available width; only floor at a readable minimum
+  let bw = Math.min(104, Math.floor((avail - (n - 1) * gap) / n));
+  bw = Math.max(46, bw);
+  const y = mainRowY(canvasH);
+  return entries.map((entry, i) => ({ entry, x: startX + i * (bw + gap), y, w: bw, h: BUTTON_H }));
 }
 
-export function hudHitTest(px: number, py: number, entries: BuildEntry[], canvasH: number): BuildEntry | null {
-  for (const r of buttonRects(entries, canvasH)) {
+export function hudHitTest(
+  px: number,
+  py: number,
+  entries: BuildEntry[],
+  canvasW: number,
+  canvasH: number,
+): BuildEntry | null {
+  for (const r of buttonRects(entries, canvasW, canvasH)) {
     if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return r.entry;
   }
   return null;
@@ -34,14 +56,14 @@ export function isInHud(py: number, canvasH: number): boolean {
   return py >= canvasH - HUD_HEIGHT;
 }
 
-// Sell button shown at the far-right of the build-button row when a building
-// is selected. Sits just left of the first power button.
+// Sell button in the thin top row, just left of the power buttons — clear of
+// the build-button row below it.
 export function sellButtonRect(canvasW: number, canvasH: number) {
-  const w = 84;
-  const h = 30;
+  const w = 90;
+  const h = 24;
   const powers = powerButtonRects(canvasW, canvasH);
-  const rightEdge = powers.length ? powers[0].x - 16 : canvasW - 220;
-  return { x: rightEdge - w, y: canvasH - HUD_HEIGHT + 14, w, h };
+  const rightEdge = powers.length ? powers[0].x - 14 : canvasW - 220;
+  return { x: rightEdge - w, y: topRowY(canvasH), w, h };
 }
 
 export function isInSellButton(px: number, py: number, canvasW: number, canvasH: number): boolean {
@@ -49,7 +71,7 @@ export function isInSellButton(px: number, py: number, canvasW: number, canvasH:
   return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
 }
 
-// ---- general power buttons (bottom bar, left of the minimap) ----
+// ---- general power buttons (main row, left of the minimap) ----
 export interface PowerRect {
   kind: PowerKind;
   x: number;
@@ -59,14 +81,13 @@ export interface PowerRect {
 }
 
 export function powerButtonRects(canvasW: number, canvasH: number): PowerRect[] {
-  const bw = 92;
-  const bh = 64;
+  const bw = 86;
   const gap = 8;
-  const rightEdge = minimapRect(canvasW, canvasH).x - 16;
-  const y = canvasH - HUD_HEIGHT + (HUD_HEIGHT - bh) / 2;
+  const rightEdge = minimapRect(canvasW, canvasH).x - 14;
+  const y = mainRowY(canvasH);
   const n = POWER_ORDER.length;
   const startX = rightEdge - n * bw - (n - 1) * gap;
-  return POWER_ORDER.map((kind, i) => ({ kind, x: startX + i * (bw + gap), y, w: bw, h: bh }));
+  return POWER_ORDER.map((kind, i) => ({ kind, x: startX + i * (bw + gap), y, w: bw, h: BUTTON_H }));
 }
 
 export function powerHitTest(px: number, py: number, canvasW: number, canvasH: number): PowerKind | null {
@@ -76,13 +97,18 @@ export function powerHitTest(px: number, py: number, canvasW: number, canvasH: n
   return null;
 }
 
-// ---- minimap ----
+// ---- minimap (scales down a little on small screens) ----
+export function minimapSize(canvasW: number, canvasH: number): number {
+  return Math.round(Math.min(176, canvasH * 0.22, canvasW * 0.16));
+}
+
 export function minimapRect(canvasW: number, canvasH: number) {
+  const size = minimapSize(canvasW, canvasH);
   return {
-    x: canvasW - MINIMAP_SIZE - MINIMAP_MARGIN,
-    y: canvasH - MINIMAP_SIZE - MINIMAP_MARGIN,
-    w: MINIMAP_SIZE,
-    h: MINIMAP_SIZE,
+    x: canvasW - size - MINIMAP_MARGIN,
+    y: canvasH - size - MINIMAP_MARGIN,
+    w: size,
+    h: size,
   };
 }
 
