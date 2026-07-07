@@ -20,7 +20,8 @@ export class Grid {
         this.cells[this.idx(x, y)] = { terrain, blocked: false };
       }
     }
-    this.scatterRocks();
+    // Terrain features (rocks, dirt) are stamped by the designed map layout
+    // in maps.ts, applied from the game's setup — see buildCrashSite().
   }
 
   idx(x: number, y: number): number {
@@ -55,33 +56,6 @@ export class Grid {
     return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
   }
 
-  private scatterRocks() {
-    // Deterministic pseudo-random rock clusters, kept away from the map edges
-    // and the two base corners so spawns stay clear.
-    let seed = 1337;
-    const rand = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed / 0x7fffffff;
-    };
-    const clusters = 18;
-    for (let i = 0; i < clusters; i++) {
-      const cx = 8 + Math.floor(rand() * (this.w - 16));
-      const cy = 8 + Math.floor(rand() * (this.h - 16));
-      const size = 1 + Math.floor(rand() * 3);
-      for (let dy = -size; dy <= size; dy++) {
-        for (let dx = -size; dx <= size; dx++) {
-          if (rand() > 0.55) continue;
-          const x = cx + dx;
-          const y = cy + dy;
-          const c = this.cell(x, y);
-          if (c) {
-            c.terrain = 2;
-            c.blocked = true;
-          }
-        }
-      }
-    }
-  }
 }
 
 // ---- A* pathfinding on the grid (8-directional) ----
@@ -111,7 +85,7 @@ export function findPath(
   sy: number,
   gx: number,
   gy: number,
-  maxNodes = 4000,
+  maxNodes = 7000,
 ): { x: number; y: number }[] {
   if (!grid.inBounds(gx, gy) || grid.isBlocked(gx, gy)) {
     const near = nearestOpen(grid, gx, gy);
