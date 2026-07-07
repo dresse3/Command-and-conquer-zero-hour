@@ -43,6 +43,15 @@ npm run preview
 | **Esc** | Annullér placering / power / fjern markering |
 | **Play Again** (efter sejr/nederlag) | Start en ny kamp med nyt kort og ny modstander |
 
+## Nyt i v1.1 — visuelt løft, tættere på originalen 🎨
+
+Fokus på at få slagmarken til at *ligne* Zero Hour i stedet for abstrakte klodser:
+
+- **Bygninger er nu unikke og genkendelige.** Før lignede alle bygninger den samme farvede firkant. Nu har hver struktur sin egen silhuet på en neutral metal-krop med faktionsfarvet trim: Command Center med roterende radar, Power Plant med køletårne og pulserende energikerne, Barracks som quonset-hangar med flag, War Factory med saw-tooth-tag og port, Supply Depot med stablede containere.
+- **Organisk ørkenterræn** i stedet for skakbræt: blødt sand med dune-skygger, vindribber og bløde jordpletter — ingen hårde tern længere.
+- **Mundingsild** når enheder og tårne skyder, så kamp føles mere levende.
+- **HUD-fix:** faktionsnavnet i topbjælken overlappede kontrol-teksten — teksten skjules nu pænt når der ikke er plads.
+
 ## Nyt i v1.0 — færdig udgivelse 🎉
 
 Første fulde udgivelse. Alt fra v0.1–v0.9.2 samlet i et komplet, spilbart spil:
