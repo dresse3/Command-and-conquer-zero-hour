@@ -45,6 +45,18 @@ npm run preview
 | **Esc** | Annullér placering / power / fjern markering |
 | **Play Again** (efter sejr/nederlag) | Start en ny kamp med nyt kort og ny modstander |
 
+## Nyt i v1.3 — nyt designet slagmark-map 🗺️
+
+Vi har skiftet det procedurelt genererede map ud med et **håndbygget, symmetrisk ørkenmap**:
+
+- **Større slagmark** — mappet er vokset fra 60×60 til **80×80** felter, så der er plads til rigtige flanke-manøvrer.
+- **Crash Site-tema** — en **central krater-formation** deler slagmarken og tvinger hære til at flankere nord eller syd om den.
+- **Symmetrisk & fair** — hele terrænet er stemplet med 180°-rotationssymmetri, så de to diagonale baser spiller fuldstændig lige (som en rigtig turnerings-map).
+- **Klippeformationer & baner** — spredt dækning, base-værn med naturlige choke-points og flanke-passager i siderne. Hvert åbent felt er forbundet (verificeret), så ingen enheder bliver låst inde.
+- **6 forsyningsfelter** i spejlede par: et sikkert ved hver base, flanke-felter og et omstridt par ved krateret.
+
+*Bygget som originalt terræn i vores egen engine — inspireret af klassiske Zero Hour-map-layouts, men uden at bruge spillets egne filer.*
+
 ## Nyt i v1.2 — dybere gameplay, tech-tree & basebygning ⚙️
 
 En stor gameplay-opdatering der bringer basebygningen tættere på det originale:

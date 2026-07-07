@@ -2,8 +2,8 @@
 // Original factions and units — inspired by, but not copied from, C&C: Zero Hour.
 
 export const TILE = 40; // pixel size of one map tile at zoom 1
-export const MAP_W = 60; // tiles
-export const MAP_H = 60; // tiles
+export const MAP_W = 80; // tiles
+export const MAP_H = 80; // tiles
 
 export type Team = "player" | "enemy";
 

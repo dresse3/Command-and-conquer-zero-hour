@@ -43,6 +43,7 @@ import {
   type UpgradeKind,
 } from "./config";
 import { hudHitTest, isInHud, isInMinimap, minimapToWorld, powerHitTest, isInSellButton } from "./hud";
+import { buildCrashSite } from "./maps";
 import type { Vec, WorldApi } from "./types";
 import { dist2 } from "./types";
 
@@ -190,16 +191,29 @@ export class Game implements WorldApi, InputHandlers {
 
   // ---------------- setup ----------------
   private setup() {
+    // Stamp the designed "Crash Site" terrain (rocks, dirt) and read back where
+    // the bases and supply fields belong.
+    const layout = buildCrashSite(this.grid);
+
     // The player starts small (Command Center + Power Plant) and must build up
     // the tech tree with harvesters. The AI starts with a full base so it can
     // fight from the opening.
-    this.buildBase("player", 4, 49, false);
-    this.buildBase("enemy", MAP_W - 7, 4, true);
+    for (const base of layout.bases) {
+      this.buildBase(base.team, base.tx, base.ty, base.team === "enemy");
+    }
 
-    this.addSupply(11, MAP_H - 8, SUPPLY_FIELD_START);
-    this.addSupply(MAP_W - 13, 9, SUPPLY_FIELD_START);
-    this.addSupply(Math.floor(MAP_W / 2) - 3, Math.floor(MAP_H / 2), SUPPLY_FIELD_START);
-    this.addSupply(Math.floor(MAP_W / 2) + 3, Math.floor(MAP_H / 2) - 2, SUPPLY_FIELD_START);
+    for (const s of layout.supplies) {
+      // keep the field's footprint clear of stamped rock
+      for (let y = s.ty - 1; y <= s.ty + 2; y++)
+        for (let x = s.tx - 1; x <= s.tx + 2; x++) {
+          const c = this.grid.cell(x, y);
+          if (c) {
+            if (c.terrain === 2) c.terrain = 0;
+            c.blocked = false;
+          }
+        }
+      this.addSupply(s.tx, s.ty, SUPPLY_FIELD_START);
+    }
 
     for (const team of ["player", "enemy"] as Team[]) {
       const base = this.baseOf(team)!;
