@@ -45,6 +45,18 @@ npm run preview
 | **Esc** | Annullér placering / power / fjern markering |
 | **Play Again** (efter sejr/nederlag) | Start en ny kamp med nyt kort og ny modstander |
 
+## Nyt i v1.4 — sværhedsgrader, skjulte baser & balancering ⚔️
+
+Tættere på et rigtigt skirmish-match:
+
+- **Sværhedsgrad-menu:** vælg **Easy / Medium / Hard** før kampen. Sværhedsgraden styrer AI'ens økonomi (indkomst ×0.7 / ×1.0 / ×1.35), byggetempo, angrebsbølger og om den bruger sine superwapen — Easy holder sig defensiv uden powers, Hard fører uophørlig krig.
+- **4 startpositioner:** mappet har nu **fire hjørne-baser** (4-foldig spejlsymmetri, så alle er lige). Du og AI'en placeres i **to tilfældige** af dem — så du ved **ikke** hvor fjenden er fra start. Nu betyder fog of war noget: du skal på **rekognoscering** for at finde modstanderen.
+- **Balancerede general powers:** Artillery Barrage, Airstrike og Reinforcements kom alt for tidligt og var alt for stærke. Nu:
+  - Promotion-points optjenes meget senere (kræver en rigtig krig, ikke bare et par drab).
+  - Powers koster flere points og har længere cooldown.
+  - Effekterne er nedjusteret (færre nedslag/bomber, lavere skade, ingen gratis tank i forstærkninger).
+  Så de er nu en **midt/sen-game belønning** i stedet for en tidlig genvej.
+
 ## Nyt i v1.3 — nyt designet slagmark-map 🗺️
 
 Vi har skiftet det procedurelt genererede map ud med et **håndbygget, symmetrisk ørkenmap**:

@@ -1,4 +1,4 @@
-import { TILE, COLORS, UNITS, BUILDINGS, POWERS, POWER_POINT_COST, SELL_REFUND, UPGRADES, type BuildEntry } from "./config";
+import { TILE, COLORS, UNITS, BUILDINGS, POWERS, POWER_POINT_COST, SELL_REFUND, UPGRADES, AI_CONFIGS, type BuildEntry } from "./config";
 import type { Game } from "./game";
 import { Unit, Building } from "./entities";
 import { buttonRects, powerButtonRects, sellButtonRect, topRowY, HUD_HEIGHT, minimapRect, worldToMinimap } from "./hud";
@@ -1158,11 +1158,39 @@ export class Renderer {
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
     ctx.fillStyle = "#e6c34a";
-    ctx.font = `bold ${Math.min(40, Math.round(W * 0.035))}px system-ui, sans-serif`;
-    ctx.fillText("CHOOSE YOUR FACTION", W / 2, topY - 48);
+    ctx.font = `bold ${Math.min(36, Math.round(W * 0.032))}px system-ui, sans-serif`;
+    ctx.fillText("CHOOSE YOUR FACTION", W / 2, topY - 150);
     ctx.fillStyle = "#94a3b8";
     ctx.font = "15px system-ui, sans-serif";
-    ctx.fillText("Each side plays differently — your enemy takes one of the others.", W / 2, topY - 22);
+    ctx.fillText("Each side plays differently — your enemy takes one of the others.", W / 2, topY - 126);
+
+    // --- AI difficulty selector ---
+    const diffRects = game.difficultyButtonRects(W, H);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a93a3";
+    ctx.font = "bold 12px system-ui, sans-serif";
+    ctx.fillText("AI DIFFICULTY", W / 2, diffRects[0].y - 12);
+    for (const r of diffRects) {
+      const sel = game.difficulty === r.diff;
+      const cfg = AI_CONFIGS[r.diff];
+      ctx.fillStyle = sel ? "rgba(230,195,74,0.9)" : "rgba(255,255,255,0.05)";
+      this.roundRect(r.x, r.y, r.w, r.h, 8);
+      ctx.fill();
+      ctx.strokeStyle = sel ? "#e6c34a" : "rgba(148,163,184,0.5)";
+      ctx.lineWidth = sel ? 2.5 : 1.5;
+      this.roundRect(r.x, r.y, r.w, r.h, 8);
+      ctx.stroke();
+      ctx.fillStyle = sel ? "#1a1206" : "#cbd5e1";
+      ctx.font = "bold 16px system-ui, sans-serif";
+      ctx.textBaseline = "middle";
+      ctx.fillText(cfg.label, r.x + r.w / 2, r.y + r.h / 2 + 1);
+      ctx.textBaseline = "alphabetic";
+    }
+    // blurb for the selected difficulty
+    const last = diffRects[diffRects.length - 1];
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "italic 13px system-ui, sans-serif";
+    ctx.fillText(AI_CONFIGS[game.difficulty].blurb, W / 2, last.y + last.h + 18);
 
     const cta = this.touch ? "▶ TAP TO PLAY" : "▶ CLICK TO PLAY";
     for (const c of cards) {

@@ -51,8 +51,8 @@ export class PowerManager {
     if (!this.canFire(kind)) return false;
     this.ready[kind] = POWERS[kind].cooldown * this.chargeMult;
     if (kind === "artillery") {
-      const strikes = 9 + this.artilleryBonus;
-      const dmg = 95 * this.artilleryDamageMult;
+      const strikes = 5 + this.artilleryBonus;
+      const dmg = 55 * this.artilleryDamageMult;
       for (let i = 0; i < strikes; i++) {
         this.active.push({
           type: "strike",
@@ -64,9 +64,9 @@ export class PowerManager {
         });
       }
     } else if (kind === "airstrike") {
-      this.active.push({ type: "plane", x: x - 760, y, vx: 620, life: 2.6, dropCd: 0, bombs: 5, tx: x, team });
+      this.active.push({ type: "plane", x: x - 760, y, vx: 620, life: 2.6, dropCd: 0, bombs: 3, tx: x, team });
     } else if (kind === "reinforce") {
-      const kinds: ("ranger" | "rocketeer" | "raptor")[] = ["ranger", "ranger", "rocketeer", "raptor"];
+      const kinds: ("ranger" | "rocketeer" | "raptor")[] = ["ranger", "ranger", "rocketeer"];
       for (let i = 0; i < this.reinforceBonus; i++) kinds.push("ranger");
       kinds.forEach((k, i) => {
         world.spawnUnitAt(team, k, x + (i - kinds.length / 2) * 28, y + (i % 2) * 26);
@@ -98,7 +98,7 @@ export class PowerManager {
           a.dropCd = 0.16;
           world.effects.explosion(a.x, a.y + 6, 1.9);
           world.audio.explosion(0.85);
-          world.damageArea(a.x, a.y, 85, 150, a.team);
+          world.damageArea(a.x, a.y, 80, 95, a.team);
           world.shake(7);
         }
       }

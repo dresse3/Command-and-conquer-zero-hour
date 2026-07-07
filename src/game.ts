@@ -11,10 +11,13 @@ import {
   FACTORY_HEAL_RATE,
   FACTORY_HEAL_RANGE,
   ATTACK_ALARM_COOLDOWN,
+  AI_CONFIGS,
   type Team,
   type UnitKind,
   type BuildingKind,
   type BuildEntry,
+  type Difficulty,
+  type AIConfig,
 } from "./config";
 import { Grid } from "./grid";
 import { Camera } from "./camera";
@@ -43,7 +46,7 @@ import {
   type UpgradeKind,
 } from "./config";
 import { hudHitTest, isInHud, isInMinimap, minimapToWorld, powerHitTest, isInSellButton } from "./hud";
-import { buildCrashSite } from "./maps";
+import { buildCrashSite, type StartSpot } from "./maps";
 import type { Vec, WorldApi } from "./types";
 import { dist2 } from "./types";
 
@@ -84,6 +87,9 @@ export class Game implements WorldApi, InputHandlers {
 
   status: GameStatus = "playing";
   phase: "select" | "playing" = "select";
+  difficulty: Difficulty = "medium";
+  aiConfig: AIConfig = AI_CONFIGS.medium;
+  incomeMult: Record<string, number> = { player: 1, enemy: 1 };
   factions: Record<string, FactionDef> = { player: FACTIONS[0], enemy: FACTIONS[1] };
   toast = "";
   private toastCd = 0;
@@ -107,6 +113,8 @@ export class Game implements WorldApi, InputHandlers {
     const others = FACTIONS.filter((f) => f.id !== pf.id);
     const ef = others[Math.floor(Math.random() * others.length)];
     this.factions = { player: pf, enemy: ef };
+    this.aiConfig = AI_CONFIGS[this.difficulty];
+    this.incomeMult = { player: 1, enemy: this.aiConfig.incomeMult };
     this.playerPowers = new PowerManager();
     this.playerPowers.applyFaction(pf);
     this.enemyPowers = new PowerManager();
@@ -153,6 +161,8 @@ export class Game implements WorldApi, InputHandlers {
     this.toastCd = 0;
     this.alarmCd = 0;
     this.attackPing = null;
+    this.incomeMult = { player: 1, enemy: 1 };
+    // difficulty is kept so the menu shows the last choice
   }
 
   // The "Play Again" button on the victory/defeat overlay. Shared by the
@@ -189,18 +199,45 @@ export class Game implements WorldApi, InputHandlers {
     return null;
   }
 
+  // Difficulty pills on the start screen, centred above the faction cards.
+  difficultyButtonRects(canvasW: number, canvasH: number) {
+    const cards = this.factionCardRects(canvasW, canvasH);
+    const cardsTop = cards.length ? cards[0].y : canvasH / 2;
+    const diffs: Difficulty[] = ["easy", "medium", "hard"];
+    const bw = Math.min(150, Math.floor((canvasW - 80) / 3) - 12);
+    const bh = 40;
+    const gap = 12;
+    const total = diffs.length * bw + (diffs.length - 1) * gap;
+    const x0 = (canvasW - total) / 2;
+    // sits between the subtitle and the faction cards
+    const y = Math.max(70, cardsTop - 80);
+    return diffs.map((diff, i) => ({ diff, x: x0 + i * (bw + gap), y, w: bw, h: bh }));
+  }
+
+  private difficultyAt(px: number, py: number): Difficulty | null {
+    for (const r of this.difficultyButtonRects(this.canvas.width, this.canvas.height)) {
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return r.diff;
+    }
+    return null;
+  }
+
   // ---------------- setup ----------------
   private setup() {
-    // Stamp the designed "Crash Site" terrain (rocks, dirt) and read back where
-    // the bases and supply fields belong.
+    // Stamp the designed "Crash Site" terrain (rocks, dirt) and read back the
+    // four corner start sites + supply fields.
     const layout = buildCrashSite(this.grid);
 
-    // The player starts small (Command Center + Power Plant) and must build up
-    // the tech tree with harvesters. The AI starts with a full base so it can
-    // fight from the opening.
-    for (const base of layout.bases) {
-      this.buildBase(base.team, base.tx, base.ty, base.team === "enemy");
+    // Pick two of the four corners at random for the player and the AI, so the
+    // enemy could be in any direction — fog of war makes scouting matter.
+    const spots = [...layout.starts];
+    for (let i = spots.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [spots[i], spots[j]] = [spots[j], spots[i]];
     }
+    // The player starts small (Command Center + Power Plant) and must build up
+    // the tech tree; the AI starts with a full base so it can fight from the off.
+    this.buildBase("player", spots[0], false);
+    this.buildBase("enemy", spots[1], true);
 
     for (const s of layout.supplies) {
       // keep the field's footprint clear of stamped rock
@@ -235,15 +272,16 @@ export class Game implements WorldApi, InputHandlers {
     if (this.phase !== "playing") this.showToast("Build a Barracks, then a War Factory to unlock tanks");
   }
 
-  // stamp a starting base cluster for a team around a corner tile
-  private buildBase(team: Team, cx: number, cy: number, full: boolean) {
-    const dir = team === "player" ? 1 : -1; // player grows up-right, enemy down-left
-    this.clearArea(cx - 2, cy - 2, 12, 12);
-    this.placeStructure(team, "command", cx, cy);
-    this.placeStructure(team, "power", cx + 4 * dir, cy);
+  // Stamp a starting base cluster at a corner spot, growing toward the map
+  // centre (dirX/dirY) and clearing the ground under it.
+  private buildBase(team: Team, spot: StartSpot, full: boolean) {
+    const { tx, ty, dirX, dirY } = spot;
+    this.clearArea(tx - 7 + (dirX > 0 ? 0 : -1), ty - 7 + (dirY > 0 ? 0 : -1), 16, 16);
+    this.placeStructure(team, "command", tx, ty);
+    this.placeStructure(team, "power", tx + 4 * dirX, ty);
     if (full) {
-      this.placeStructure(team, "barracks", cx, cy - 3 * dir);
-      this.placeStructure(team, "factory", cx + 4 * dir, cy - 4 * dir);
+      this.placeStructure(team, "barracks", tx, ty + 3 * dirY);
+      this.placeStructure(team, "factory", tx + 4 * dirX, ty + 4 * dirY);
     }
   }
 
@@ -438,7 +476,8 @@ export class Game implements WorldApi, InputHandlers {
   }
 
   addCredits(team: Team, amount: number) {
-    this.credits[team] += amount;
+    // difficulty handicap: the AI's harvest income is scaled (easy < 1 < hard)
+    this.credits[team] += amount * (this.incomeMult[team] ?? 1);
   }
 
   // A structure finished construction (called from Building.update).
@@ -557,7 +596,15 @@ export class Game implements WorldApi, InputHandlers {
       return;
     }
     if (this.phase === "select") {
-      const id = this.factionCardAt(rect.x + rect.w / 2, rect.y + rect.h / 2);
+      const mx = rect.x + rect.w / 2;
+      const my = rect.y + rect.h / 2;
+      const d = this.difficultyAt(mx, my);
+      if (d) {
+        this.difficulty = d;
+        this.audio.select();
+        return;
+      }
+      const id = this.factionCardAt(mx, my);
       if (id) this.startGame(id);
       return;
     }
@@ -742,6 +789,12 @@ export class Game implements WorldApi, InputHandlers {
       return;
     }
     if (this.phase === "select") {
+      const d = this.difficultyAt(sx, sy);
+      if (d) {
+        this.difficulty = d;
+        this.audio.select();
+        return;
+      }
       const id = this.factionCardAt(sx, sy);
       if (id) this.startGame(id);
       return;
