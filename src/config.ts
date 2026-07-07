@@ -13,10 +13,11 @@ export type UnitKind =
   | "raptor"
   | "artillery"
   | "harvester"
+  | "chinook"
   | "marksman"
   | "overlord"
   | "technical";
-export type BuildingKind = "command" | "power" | "barracks" | "factory" | "supply" | "turret";
+export type BuildingKind = "command" | "power" | "barracks" | "factory" | "supply" | "airfield" | "turret";
 
 export interface UnitDef {
   kind: UnitKind;
@@ -32,6 +33,8 @@ export interface UnitDef {
   fireRate: number; // shots / second
   splash: number; // splash radius in px (0 = single target)
   canGather: boolean;
+  canBuild?: boolean; // can construct/repair structures (the harvester/dozer)
+  flying?: boolean; // ignores terrain & unit collision (aircraft)
 }
 
 export const UNITS: Record<UnitKind, UnitDef> = {
@@ -109,6 +112,23 @@ export const UNITS: Record<UnitKind, UnitDef> = {
     fireRate: 0,
     splash: 0,
     canGather: true,
+    canBuild: true, // harvesters also construct & repair structures
+  },
+  chinook: {
+    kind: "chinook",
+    name: "Supply Chinook",
+    cost: 800,
+    buildTime: 10,
+    maxHp: 260,
+    speed: 120,
+    radius: 14,
+    sight: 240,
+    range: 0,
+    damage: 0,
+    fireRate: 0,
+    splash: 0,
+    canGather: true, // flies supplies in — faster, ignores terrain
+    flying: true,
   },
   // ---- faction signature units ----
   marksman: {
@@ -192,6 +212,7 @@ export interface BuildingDef {
   kind: BuildingKind;
   name: string;
   cost: number;
+  buildTime: number; // seconds for a harvester to construct it
   maxHp: number;
   tilesW: number;
   tilesH: number;
@@ -199,6 +220,7 @@ export interface BuildingDef {
   powerUsed: number; // draws from grid
   needsPower: boolean; // stops working when grid power < 0
   isDropoff: boolean; // harvesters can unload here
+  prereq?: BuildingKind; // must own a working one of these to build it
   // turret weapon (0 damage = no weapon)
   range: number;
   damage: number;
@@ -206,11 +228,23 @@ export interface BuildingDef {
   produces: BuildEntry[];
 }
 
+// Structures a builder (harvester) can construct, in tech order. Gating is by
+// each building's `prereq`; the HUD shows locked ones. Hotkeys 1-6.
+export const STRUCTURE_BUILD: BuildEntry[] = [
+  { type: "building", key: "power", hotkey: "1" },
+  { type: "building", key: "supply", hotkey: "2" },
+  { type: "building", key: "barracks", hotkey: "3" },
+  { type: "building", key: "factory", hotkey: "4" },
+  { type: "building", key: "airfield", hotkey: "5" },
+  { type: "building", key: "turret", hotkey: "6" },
+];
+
 export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
   command: {
     kind: "command",
     name: "Command Center",
     cost: 2000,
+    buildTime: 20,
     maxHp: 3000,
     tilesW: 3,
     tilesH: 3,
@@ -221,19 +255,13 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     range: 0,
     damage: 0,
     fireRate: 0,
-    produces: [
-      { type: "unit", key: "harvester", hotkey: "H" },
-      { type: "building", key: "power", hotkey: "1" },
-      { type: "building", key: "barracks", hotkey: "2" },
-      { type: "building", key: "factory", hotkey: "3" },
-      { type: "building", key: "supply", hotkey: "4" },
-      { type: "building", key: "turret", hotkey: "5" },
-    ],
+    produces: [{ type: "unit", key: "harvester", hotkey: "H" }],
   },
   power: {
     kind: "power",
     name: "Power Plant",
     cost: 300,
+    buildTime: 6,
     maxHp: 800,
     tilesW: 2,
     tilesH: 2,
@@ -250,6 +278,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     kind: "barracks",
     name: "Barracks",
     cost: 400,
+    buildTime: 8,
     maxHp: 1000,
     tilesW: 2,
     tilesH: 2,
@@ -269,6 +298,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     kind: "factory",
     name: "War Factory",
     cost: 800,
+    buildTime: 12,
     maxHp: 1400,
     tilesW: 3,
     tilesH: 3,
@@ -276,6 +306,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     powerUsed: 50,
     needsPower: true,
     isDropoff: false,
+    prereq: "barracks", // need a Barracks first (like the real tech tree)
     range: 0,
     damage: 0,
     fireRate: 0,
@@ -289,6 +320,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     kind: "supply",
     name: "Supply Depot",
     cost: 300,
+    buildTime: 7,
     maxHp: 1200,
     tilesW: 2,
     tilesH: 2,
@@ -301,10 +333,29 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     fireRate: 0,
     produces: [],
   },
+  airfield: {
+    kind: "airfield",
+    name: "Airfield",
+    cost: 900,
+    buildTime: 12,
+    maxHp: 1100,
+    tilesW: 3,
+    tilesH: 2,
+    powerProvided: 0,
+    powerUsed: 40,
+    needsPower: true,
+    isDropoff: true, // choppers drop supplies here too
+    prereq: "factory", // top tier — needs a War Factory
+    range: 0,
+    damage: 0,
+    fireRate: 0,
+    produces: [{ type: "unit", key: "chinook", hotkey: "C" }],
+  },
   turret: {
     kind: "turret",
     name: "Gun Turret",
     cost: 500,
+    buildTime: 6,
     maxHp: 900,
     tilesW: 1,
     tilesH: 1,
@@ -312,6 +363,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     powerUsed: 25,
     needsPower: true,
     isDropoff: false,
+    prereq: "barracks",
     range: 240,
     damage: 30,
     fireRate: 1.4,
@@ -324,6 +376,12 @@ export const GATHER_AMOUNT = 100; // credits per trip
 export const GATHER_TIME = 3.5; // seconds to fill up at a supply field
 export const SUPPLY_FIELD_START = 4000; // credits available in a field
 export const BUILD_RADIUS = TILE * 7; // how far from own buildings you may place
+
+// Repair & healing
+export const HARVESTER_REPAIR_RATE = 90; // building HP/sec a harvester restores
+export const FACTORY_HEAL_RATE = 45; // vehicle HP/sec near a friendly War Factory
+export const FACTORY_HEAL_RANGE = TILE * 4; // radius of the War Factory repair bay
+export const ATTACK_ALARM_COOLDOWN = 9; // seconds between "under attack" alerts
 
 export const START_CREDITS = 2000;
 

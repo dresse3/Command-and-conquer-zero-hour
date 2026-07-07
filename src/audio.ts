@@ -168,6 +168,12 @@ export class Sfx {
     if (!this.throttle("lowpower", 2)) return;
     this.blip(120, 0.4, "sawtooth", 0.18);
   }
+  // urgent two-tone klaxon when the player's forces come under attack
+  alarm() {
+    if (!this.throttle("alarm", 1)) return;
+    this.blip(740, 0.16, "square", 0.24);
+    setTimeout(() => this.blip(560, 0.2, "square", 0.24), 150);
+  }
   fanfare(win: boolean) {
     const notes = win ? [523, 659, 784, 1047] : [392, 330, 262];
     notes.forEach((n, i) => setTimeout(() => this.blip(n, 0.3, "triangle", 0.25), i * 160));

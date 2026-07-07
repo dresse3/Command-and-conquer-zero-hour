@@ -26,6 +26,9 @@ export interface WorldApi {
   damageArea(x: number, y: number, radius: number, amount: number, casterTeam: Team): void;
   spawnUnitAt(team: Team, kind: import("./config").UnitKind, x: number, y: number): void;
   shake(mag: number): void;
+  onBuildingComplete(b: Building): void; // a structure finished construction
+  onRepairTick(b: Building): void; // a building was repaired this frame
+  reportAttack(x: number, y: number, attackerTeam: Team): void; // trigger alarms
 }
 
 export function dist(a: Vec, b: Vec): number {

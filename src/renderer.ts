@@ -255,6 +255,56 @@ export class Renderer {
     ctx.fill();
   }
 
+  // A structure under construction: a foundation with the body rising from the
+  // bottom behind scaffolding, plus a progress bar.
+  private drawConstruction(
+    ctx: CanvasRenderingContext2D,
+    b: Building,
+    px: number,
+    py: number,
+    w: number,
+    h: number,
+    main: string
+  ) {
+    const p = b.buildProgress;
+    // foundation pad
+    ctx.fillStyle = "#1b1e26";
+    ctx.fillRect(px + 2, py + 2, w - 4, h - 4);
+    ctx.strokeStyle = "rgba(230,195,74,0.5)";
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(px + 3, py + 3, w - 6, h - 6);
+    ctx.setLineDash([]);
+    // body rising from the bottom
+    const bh = Math.max(2, (h - 10) * p);
+    ctx.fillStyle = "#2c313b";
+    ctx.fillRect(px + 5, py + h - 5 - bh, w - 10, bh);
+    ctx.fillStyle = main;
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(px + 5, py + h - 5 - bh, w - 10, 3);
+    ctx.globalAlpha = 1;
+    // scaffolding uprights
+    ctx.strokeStyle = "rgba(230,195,74,0.6)";
+    ctx.lineWidth = 1.5;
+    for (let sx = px + 8; sx < px + w - 6; sx += 16) {
+      ctx.beginPath();
+      ctx.moveTo(sx, py + 5);
+      ctx.lineTo(sx, py + h - 5);
+      ctx.stroke();
+    }
+    // progress bar + label
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(px + 5, py - 9, w - 10, 6);
+    ctx.fillStyle = "#e6c34a";
+    ctx.fillRect(px + 6, py - 8, (w - 12) * p, 4);
+    ctx.fillStyle = "#ffe27a";
+    ctx.font = "bold 11px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${Math.round(p * 100)}%`, b.x, b.y);
+    ctx.textAlign = "left";
+  }
+
   private drawBuilding(ctx: CanvasRenderingContext2D, b: Building) {
     const px = b.tileX * TILE;
     const py = b.tileY * TILE;
@@ -264,6 +314,16 @@ export class Renderer {
     const dark = b.team === "player" ? COLORS.playerDark : COLORS.enemyDark;
 
     this.shadow(ctx, b.x, py + h - 6, w * 0.5, h * 0.28);
+
+    if (b.constructing) {
+      this.drawConstruction(ctx, b, px, py, w, h, main);
+      if (b.selected) {
+        ctx.strokeStyle = "#7CFC00";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px + 1, py + 1, w - 2, h - 2);
+      }
+      return;
+    }
 
     // Concrete pad + metal body. The bulk is neutral (like the real game's
     // structures); the team colour lives in the trim, corner pylons and roof
@@ -538,6 +598,35 @@ export class Renderer {
         ctx.restore();
         break;
       }
+      case "chinook": {
+        // twin-rotor supply helicopter, drawn elevated with a ground shadow
+        const lift = 10;
+        ctx.fillStyle = "rgba(0,0,0,0.22)";
+        ctx.beginPath();
+        ctx.ellipse(u.x + 4, u.y + lift, u.radius, u.radius * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(u.x, u.y - lift);
+        ctx.rotate(u.angle);
+        ctx.fillStyle = dark;
+        ctx.fillRect(-u.radius, -u.radius * 0.5, u.radius * 2, u.radius); // fuselage
+        ctx.fillStyle = u.carrying > 0 ? COLORS.supply : main;
+        ctx.fillRect(-u.radius * 0.5, -u.radius * 0.4, u.radius, u.radius * 0.8); // cargo box
+        ctx.fillStyle = "#2b2f38";
+        ctx.fillRect(u.radius * 0.8, -3, u.radius * 0.7, 6); // tail
+        // two spinning rotor discs
+        const spin = performance.now() / 40;
+        ctx.strokeStyle = "rgba(210,220,235,0.5)";
+        ctx.lineWidth = 2;
+        for (const rx of [-u.radius * 0.55, u.radius * 0.55]) {
+          ctx.beginPath();
+          ctx.moveTo(rx - Math.cos(spin) * u.radius, -Math.sin(spin) * u.radius);
+          ctx.lineTo(rx + Math.cos(spin) * u.radius, Math.sin(spin) * u.radius);
+          ctx.stroke();
+        }
+        ctx.restore();
+        break;
+      }
       case "harvester": {
         ctx.save();
         ctx.translate(u.x, u.y);
@@ -767,11 +856,19 @@ export class Renderer {
     const entries = game.currentBuildEntries();
     const tY = topRowY(H);
     ctx.textBaseline = "middle";
-    if (!sel) {
+    if (!sel && game.hasBuilderSelected()) {
+      // builder selected: show the structure build menu
+      ctx.fillStyle = "#7ec46b";
+      ctx.font = "bold 13px system-ui, sans-serif";
+      ctx.fillText("HARVESTER — build structures", 16, tY + 12);
+      for (const rect of buttonRects(entries, W, H)) this.drawBuildButton(ctx, game, rect.entry, rect.x, rect.y, rect.w, rect.h);
+    } else if (!sel) {
       ctx.fillStyle = "#64748b";
       ctx.font = "14px system-ui, sans-serif";
       ctx.fillText(
-        this.touch ? "Tap a building to build units or structures." : "Select a building to build units or structures.",
+        this.touch
+          ? "Select a Harvester to build · tap a building for its units."
+          : "Select a Harvester to build structures · a building for its units.",
         20,
         H - HUD_HEIGHT / 2,
       );
@@ -836,9 +933,27 @@ export class Renderer {
       cost = game.unitCost(entry.key as keyof typeof UNITS, "player");
       tag = "unit";
     } else if (entry.type === "building") {
-      name = BUILDINGS[entry.key as keyof typeof BUILDINGS].name;
-      cost = game.buildingCost(entry.key as keyof typeof BUILDINGS, "player");
+      const bkind = entry.key as keyof typeof BUILDINGS;
+      name = BUILDINGS[bkind].name;
+      cost = game.buildingCost(bkind, "player");
       tag = "structure";
+      // locked by tech tree — draw greyed with the prerequisite and bail
+      if (!game.structurePrereqMet(bkind, "player")) {
+        const prereq = BUILDINGS[BUILDINGS[bkind].prereq!].name;
+        ctx.fillStyle = "rgba(40,44,54,0.55)";
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = "rgba(110,110,120,0.5)";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = "#7a8290";
+        ctx.font = "bold 12px system-ui, sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText(this.fit(name, w - 12), x + 7, y + 15);
+        ctx.font = "10px system-ui, sans-serif";
+        ctx.fillText(this.fit(`🔒 needs ${prereq}`, w - 12), x + 7, y + 34);
+        ctx.fillText(`[${entry.hotkey}]`, x + 7, y + 51);
+        return;
+      }
     } else {
       const d = UPGRADES[entry.key as keyof typeof UPGRADES];
       name = d.name;
@@ -1004,6 +1119,17 @@ export class Renderer {
       ctx.fillStyle = u.team === "player" ? "#bfe4ff" : "#ffc2cd";
       ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
     }
+    // "under attack" ping — an expanding red ring at the last hit location
+    if (game.attackPing) {
+      const p = worldToMinimap(game.attackPing.x, game.attackPing.y, W, H);
+      const phase = 1 - (game.attackPing.t % 0.8) / 0.8;
+      ctx.strokeStyle = `rgba(255,60,70,${0.9 * (1 - phase)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2 + phase * 10, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     const tl = worldToMinimap(game.camera.x, game.camera.y, W, H);
     const br = worldToMinimap(
       game.camera.x + game.camera.viewW / game.camera.zoom,

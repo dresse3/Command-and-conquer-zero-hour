@@ -31,17 +31,30 @@ npm run preview
 | **Musehjul** | Zoom ind/ud |
 | **Klik på minimap** | Hop kameraet · (højre-klik = kommandér dertil) |
 | **Venstre-klik + træk** | Marker enheder (box-select) |
-| **Venstre-klik på bygning** | Vælg bygning → dens byg-menu vises nederst |
+| **Venstre-klik på bygning** | Vælg bygning → dens enheds-menu vises nederst |
+| **Vælg en harvester** | Byg-menu for **strukturer** vises (1-6) — harvesteren opfører dem |
 | **Shift + klik** | Tilføj til markering |
-| **Højre-klik** | Flyt · angrib fjende · send harvester til supply |
+| **Højre-klik** | Flyt · angrib fjende · send harvester til supply · **reparér egen bygning** |
+| **Højre-klik på War Factory** (med køretøjer) | Kør ind i reparationsbugten og hel |
 | **A** derefter klik | Attack-move til punkt |
 | **Ctrl + 1-9** | Gem kontrolgruppe · **1-9** vælg gruppe |
-| **Byg-hotkeys** (når bygning valgt) | fx R/E = infanteri, T/Y = køretøjer, 1-5 = strukturer |
+| **Byg-hotkeys** | Bygning valgt: fx R/E/T/Y = enheder · harvester valgt: 1-6 = strukturer |
 | **Z / X / C** | Lås op / affyr general power (kræver ★ promotion points) |
 | **K** eller SELL-knap | Sælg valgt bygning (50% refusion) |
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
 | **Esc** | Annullér placering / power / fjern markering |
 | **Play Again** (efter sejr/nederlag) | Start en ny kamp med nyt kort og ny modstander |
+
+## Nyt i v1.2 — dybere gameplay, tech-tree & basebygning ⚙️
+
+En stor gameplay-opdatering der bringer basebygningen tættere på det originale:
+
+- **Byg dig op via et tech-tree.** Du starter kun med Command Center + Power Plant. Du skal bygge en **Barracks** for at låse **War Factory** op, og en War Factory for at låse **Airfield** op. Låste bygninger vises med 🔒 og hvad de kræver.
+- **Harvesteren er din bygmester.** Vælg en harvester → byg-menuen viser strukturer. Bygninger har **byggetid** og rejser sig fra jorden med stillads og en fremskridtsbjælke; harvesteren kører hen og opfører dem.
+- **Airfield → Supply Chinook.** En ny bygning producerer en **forsynings-helikopter** der flyver penge hjem — hurtigere end harvestere og kan ikke blokeres af terræn.
+- **Reparation:** harvestere kan **reparere bygninger** (højreklik på en skadet egen bygning). Skadede **køretøjer og tanks heler automatisk** når de kører hen i nærheden af din War Factory.
+- **Angrebsalarm:** en klaxon lyder og en rød ring pulserer på minimappet når dine styrker bliver angrebet.
+- Nye enheder produceres nu direkte i arbejde (harvestere/choppere kører ud og samler forsyninger med det samme).
 
 ## Nyt i v1.1 — visuelt løft, tættere på originalen 🎨
 

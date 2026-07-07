@@ -4,6 +4,7 @@ import {
   TILE,
   GATHER_AMOUNT,
   GATHER_TIME,
+  HARVESTER_REPAIR_RATE,
   VET_KILLS,
   VET_DAMAGE,
   VET_HP,
@@ -22,7 +23,7 @@ let NEXT_ID = 1;
 
 export type Target = Unit | Building;
 
-type UnitState = "idle" | "moving" | "attack-move" | "attacking" | "gather" | "return";
+type UnitState = "idle" | "moving" | "attack-move" | "attacking" | "gather" | "return" | "build" | "repair";
 
 export class Unit {
   id = NEXT_ID++;
@@ -57,6 +58,10 @@ export class Unit {
   carrying = 0;
   gatherTimer = 0;
   fieldTarget: SupplyField | null = null;
+
+  // construction / repair (harvester as a builder)
+  buildTarget: Building | null = null;
+  repairTarget: Building | null = null;
 
   // veterancy
   kills = 0;
@@ -128,7 +133,32 @@ export class Unit {
     this.computePath(world, field.x, field.y);
   }
 
+  // Send a builder to a construction site (the building tracks its own progress).
+  goBuild(world: WorldApi, b: Building) {
+    if (!this.def.canBuild) return;
+    this.buildTarget = b;
+    this.target = null;
+    this.state = "build";
+    this.goal = { x: b.x, y: b.y };
+    this.computePath(world, b.x, b.y);
+  }
+
+  // Send a builder to repair a damaged friendly building.
+  goRepair(world: WorldApi, b: Building) {
+    if (!this.def.canBuild) return;
+    this.repairTarget = b;
+    this.target = null;
+    this.state = "repair";
+    this.goal = { x: b.x, y: b.y };
+    this.computePath(world, b.x, b.y);
+  }
+
   private computePath(world: WorldApi, wx: number, wy: number) {
+    // Aircraft ignore terrain and units — fly straight to the destination.
+    if (this.def.flying) {
+      this.path = [{ x: wx, y: wy }];
+      return;
+    }
     const from = world.grid.worldToTile(this.x, this.y);
     const to = world.grid.worldToTile(wx, wy);
     const tilePath = findPath(world.grid, from.tx, from.ty, to.tx, to.ty);
@@ -167,9 +197,15 @@ export class Unit {
       case "return":
         this.doReturn(dt, world);
         break;
+      case "build":
+        this.doBuild(dt, world);
+        break;
+      case "repair":
+        this.doRepair(dt, world);
+        break;
     }
 
-    this.separate(world);
+    if (!this.def.flying) this.separate(world);
   }
 
   private autoAcquire(world: WorldApi): boolean {
@@ -256,6 +292,53 @@ export class Unit {
     this.path = [];
   }
 
+  // Walk to a construction site and stay put until the building finishes
+  // raising itself. The building advances its own timer (see Building.update),
+  // so the harvester is simply occupied for the build duration.
+  private doBuild(dt: number, world: WorldApi) {
+    const b = this.buildTarget;
+    if (!b || !b.alive || !b.constructing) {
+      this.buildTarget = null;
+      this.resumeWork(world);
+      return;
+    }
+    if (dist(this, b) > b.radius + this.radius + 6) {
+      if (this.path.length === 0) this.computePath(world, b.x, b.y);
+      this.stepAlongPath(dt, world);
+    }
+    // once complete, Building.update flips constructing=false and we resume
+  }
+
+  // Walk to a damaged friendly building and heal it while adjacent.
+  private doRepair(dt: number, world: WorldApi) {
+    const b = this.repairTarget;
+    if (!b || !b.alive || b.hp >= b.maxHp) {
+      this.repairTarget = null;
+      this.resumeWork(world);
+      return;
+    }
+    if (dist(this, b) > b.radius + this.radius + 6) {
+      if (this.path.length === 0) this.computePath(world, b.x, b.y);
+      this.stepAlongPath(dt, world);
+      return;
+    }
+    b.hp = Math.min(b.maxHp, b.hp + HARVESTER_REPAIR_RATE * dt);
+    world.onRepairTick(b);
+  }
+
+  // After building/repairing, go back to gathering if we can, else idle.
+  private resumeWork(world: WorldApi) {
+    this.path = [];
+    if (this.def.canGather) {
+      const f = world.findNearestSupply(this.x, this.y);
+      if (f) {
+        this.gather(world, f);
+        return;
+      }
+    }
+    this.state = "idle";
+  }
+
   private followPath(dt: number, world: WorldApi) {
     if (this.path.length === 0) {
       this.state = "idle";
@@ -316,13 +399,15 @@ export class Unit {
     vx /= d;
     vy /= d; // seek direction (unit vector)
 
-    // blend in local avoidance so units flow around each other
-    const av = this.avoidance(world);
-    vx += av.x;
-    vy += av.y;
-    const vl = Math.hypot(vx, vy) || 1;
-    vx /= vl;
-    vy /= vl;
+    // blend in local avoidance so units flow around each other (aircraft don't)
+    if (!this.def.flying) {
+      const av = this.avoidance(world);
+      vx += av.x;
+      vy += av.y;
+      const vl = Math.hypot(vx, vy) || 1;
+      vx /= vl;
+      vy /= vl;
+    }
 
     const step = this.speed * dt;
     this.x += vx * step;
@@ -387,6 +472,11 @@ export class Building {
   muzzle = 0; // >0 briefly after the turret fires (muzzle flash)
   private fireCd = 0;
 
+  // construction: while `constructing`, the building is inert (no power, no
+  // production, no weapon) and rises from 0 to full over its build time.
+  constructing = false;
+  buildProgress = 1; // 0..1
+
   constructor(public team: Team, public kind: BuildingKind, public tileX: number, public tileY: number) {
     this.def = BUILDINGS[kind];
     this.hp = this.def.maxHp;
@@ -396,12 +486,19 @@ export class Building {
     this.rally = { x: this.x, y: this.y + this.radius + TILE };
   }
 
+  // Put the building into "under construction" state (called on player placement).
+  beginConstruction() {
+    this.constructing = true;
+    this.buildProgress = 0;
+    this.hp = Math.max(1, Math.round(this.def.maxHp * 0.1));
+  }
+
   get maxHp() {
     return this.def.maxHp;
   }
 
   get functional(): boolean {
-    return this.alive && (!this.def.needsPower || this.powered);
+    return this.alive && !this.constructing && (!this.def.needsPower || this.powered);
   }
 
   takeDamage(amount: number) {
@@ -419,6 +516,19 @@ export class Building {
   // Advances production and fires turret weapon.
   // Returns a finished unit kind to spawn, or null.
   update(dt: number, world: WorldApi): UnitKind | null {
+    // rise from the ground while under construction — inert until finished
+    if (this.constructing) {
+      this.buildProgress += dt / this.def.buildTime;
+      this.hp = Math.min(this.maxHp, this.maxHp * (0.1 + 0.9 * this.buildProgress));
+      if (this.buildProgress >= 1) {
+        this.buildProgress = 1;
+        this.constructing = false;
+        this.hp = this.maxHp;
+        world.onBuildingComplete(this);
+      }
+      return null;
+    }
+
     // turret weapon
     if (this.muzzle > 0) this.muzzle -= dt;
     if (this.def.damage > 0 && this.functional) {
@@ -513,6 +623,7 @@ export class Projectile {
   private impact(world: WorldApi) {
     const ix = this.target.x;
     const iy = this.target.y;
+    if (this.team !== this.target.team) world.reportAttack(ix, iy, this.team);
     if (this.splash <= 0) {
       const wasAlive = this.target.alive;
       this.target.takeDamage(this.damage);
