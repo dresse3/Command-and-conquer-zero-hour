@@ -53,6 +53,8 @@ export class EnemyAI {
         this.game.tryAiBuild("enemy", "power");
       } else if (this.count("turret") < 2 && Math.random() < 0.5) {
         this.game.tryAiBuild("enemy", "turret");
+      } else if (Math.random() < 0.4) {
+        this.game.aiTryUpgrade("enemy");
       }
     }
 

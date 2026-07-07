@@ -158,11 +158,35 @@ export const UNITS: Record<UnitKind, UnitDef> = {
   },
 };
 
+export type UpgradeKind = "weapons" | "armor" | "supply" | "reactors";
+
 export interface BuildEntry {
-  type: "unit" | "building";
-  key: UnitKind | BuildingKind;
+  type: "unit" | "building" | "upgrade";
+  key: UnitKind | BuildingKind | UpgradeKind;
   hotkey: string;
 }
+
+export interface UpgradeDef {
+  kind: UpgradeKind;
+  name: string;
+  cost: number;
+  building: BuildingKind;
+  hotkey: string;
+  blurb: string;
+}
+
+export const UPGRADES: Record<UpgradeKind, UpgradeDef> = {
+  weapons: { kind: "weapons", name: "Weapons Upgrade", cost: 800, building: "barracks", hotkey: "G", blurb: "+20% damage" },
+  armor: { kind: "armor", name: "Composite Armor", cost: 1000, building: "factory", hotkey: "J", blurb: "+25% HP" },
+  supply: { kind: "supply", name: "Supply Lines", cost: 600, building: "supply", hotkey: "U", blurb: "+50% income" },
+  reactors: { kind: "reactors", name: "Overcharged Reactors", cost: 500, building: "power", hotkey: "P", blurb: "+50% power" },
+};
+
+// upgrade effect magnitudes
+export const UPG_WEAPONS_DMG = 1.2;
+export const UPG_ARMOR_HP = 1.25;
+export const UPG_SUPPLY_GATHER = 1.5;
+export const UPG_REACTOR_POWER = 1.5;
 
 export interface BuildingDef {
   kind: BuildingKind;

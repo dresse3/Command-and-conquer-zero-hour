@@ -1,4 +1,4 @@
-import { TILE, COLORS, UNITS, BUILDINGS, POWERS, POWER_POINT_COST, SELL_REFUND, type BuildEntry } from "./config";
+import { TILE, COLORS, UNITS, BUILDINGS, POWERS, POWER_POINT_COST, SELL_REFUND, UPGRADES, type BuildEntry } from "./config";
 import type { Game } from "./game";
 import { Unit, Building } from "./entities";
 import { buttonRects, powerButtonRects, sellButtonRect, HUD_HEIGHT, minimapRect, worldToMinimap } from "./hud";
@@ -607,27 +607,46 @@ export class Renderer {
     w: number,
     h: number,
   ) {
-    const def = entry.type === "unit" ? UNITS[entry.key as keyof typeof UNITS] : BUILDINGS[entry.key as keyof typeof BUILDINGS];
-    const cost =
-      entry.type === "unit"
-        ? game.unitCost(entry.key as keyof typeof UNITS, "player")
-        : game.buildingCost(entry.key as keyof typeof BUILDINGS, "player");
+    let name: string;
+    let cost: number;
+    let tag: string;
+    if (entry.type === "unit") {
+      name = UNITS[entry.key as keyof typeof UNITS].name;
+      cost = game.unitCost(entry.key as keyof typeof UNITS, "player");
+      tag = "unit";
+    } else if (entry.type === "building") {
+      name = BUILDINGS[entry.key as keyof typeof BUILDINGS].name;
+      cost = game.buildingCost(entry.key as keyof typeof BUILDINGS, "player");
+      tag = "structure";
+    } else {
+      const d = UPGRADES[entry.key as keyof typeof UPGRADES];
+      name = d.name;
+      cost = d.cost;
+      tag = d.blurb;
+    }
+    const isUpg = entry.type === "upgrade";
     const affordable = game.credits["player"] >= cost;
-    ctx.fillStyle = affordable ? "rgba(61,169,252,0.18)" : "rgba(80,80,90,0.18)";
+    ctx.fillStyle = isUpg ? "rgba(230,195,74,0.14)" : affordable ? "rgba(61,169,252,0.18)" : "rgba(80,80,90,0.18)";
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = affordable ? "rgba(61,169,252,0.7)" : "rgba(120,120,130,0.5)";
+    ctx.strokeStyle = isUpg
+      ? affordable
+        ? "rgba(230,195,74,0.75)"
+        : "rgba(120,110,80,0.5)"
+      : affordable
+        ? "rgba(61,169,252,0.7)"
+        : "rgba(120,120,130,0.5)";
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x, y, w, h);
     ctx.fillStyle = affordable ? "#e2e8f0" : "#7a8290";
-    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.font = "bold 12px system-ui, sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(def.name, x + 7, y + 15);
+    ctx.fillText(name, x + 7, y + 15);
     ctx.fillStyle = COLORS.supply;
     ctx.font = "12px system-ui, sans-serif";
     ctx.fillText(`⛃ ${cost}`, x + 7, y + 34);
-    ctx.fillStyle = "#94a3b8";
+    ctx.fillStyle = isUpg ? "#e6c34a" : "#94a3b8";
     ctx.font = "10px system-ui, sans-serif";
-    ctx.fillText(`[${entry.hotkey}] ${entry.type === "building" ? "structure" : "unit"}`, x + 7, y + 51);
+    ctx.fillText(`[${entry.hotkey}] ${tag}`, x + 7, y + 51);
   }
 
   private drawPowerButtons(game: Game) {

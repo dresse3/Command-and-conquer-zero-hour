@@ -61,10 +61,11 @@ export class Unit {
   kills = 0;
   rank = 0; // 0 rookie, 1 veteran, 2 elite
 
-  // faction stat multipliers (assigned by the game on spawn)
+  // faction + upgrade stat multipliers (assigned by the game on spawn)
   hpMult = 1;
   speedMult = 1;
   dmgMult = 1;
+  gatherMult = 1;
 
   constructor(public team: Team, public kind: UnitKind, x: number, y: number) {
     this.def = UNITS[kind];
@@ -228,7 +229,7 @@ export class Unit {
     }
     this.gatherTimer += dt;
     if (this.gatherTimer >= GATHER_TIME) {
-      this.carrying = field.take(GATHER_AMOUNT);
+      this.carrying = field.take(GATHER_AMOUNT * this.gatherMult);
       this.gatherTimer = 0;
       this.state = "return";
       this.path = [];

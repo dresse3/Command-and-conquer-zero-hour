@@ -29,8 +29,14 @@ import {
   SELL_REFUND,
   FACTIONS,
   factionById,
+  UPGRADES,
+  UPG_WEAPONS_DMG,
+  UPG_ARMOR_HP,
+  UPG_SUPPLY_GATHER,
+  UPG_REACTOR_POWER,
   type PowerKind,
   type FactionDef,
+  type UpgradeKind,
 } from "./config";
 import { hudHitTest, isInHud, isInMinimap, minimapToWorld, powerHitTest, isInSellButton } from "./hud";
 import type { Vec, WorldApi } from "./types";
@@ -67,6 +73,9 @@ export class Game implements WorldApi, InputHandlers {
   xp: Record<string, number> = { player: 0, enemy: 0 };
   promoPoints: Record<string, number> = { player: 0, enemy: 0 };
   private promoGiven: Record<string, number> = { player: 0, enemy: 0 };
+
+  // researched upgrades per team
+  upgrades: Record<string, Set<UpgradeKind>> = { player: new Set(), enemy: new Set() };
 
   status: GameStatus = "playing";
   phase: "select" | "playing" = "select";
@@ -190,13 +199,44 @@ export class Game implements WorldApi, InputHandlers {
 
   private spawnUnit(team: Team, kind: UnitKind, x: number, y: number): Unit {
     const u = new Unit(team, kind, x, y);
-    const f = this.factions[team];
-    u.hpMult = f.hpMult;
-    u.speedMult = f.speedMult;
-    u.dmgMult = f.damageMult;
-    u.hp = u.maxHp; // apply faction HP bonus to starting health
+    this.applyMods(u);
+    u.hp = u.maxHp; // start at full (faction + upgrade HP bonuses applied)
     this.units.push(u);
     return u;
+  }
+
+  // Combine faction and researched-upgrade multipliers onto a unit.
+  private applyMods(u: Unit) {
+    const f = this.factions[u.team];
+    const up = this.upgrades[u.team];
+    u.hpMult = f.hpMult * (up.has("armor") ? UPG_ARMOR_HP : 1);
+    u.dmgMult = f.damageMult * (up.has("weapons") ? UPG_WEAPONS_DMG : 1);
+    u.speedMult = f.speedMult;
+    u.gatherMult = up.has("supply") ? UPG_SUPPLY_GATHER : 1;
+    if (u.hp > u.maxHp) u.hp = u.maxHp;
+  }
+
+  private purchaseUpgrade(team: Team, kind: UpgradeKind): boolean {
+    const def = UPGRADES[kind];
+    if (this.upgrades[team].has(kind)) return false;
+    if (this.credits[team] < def.cost) return false;
+    this.credits[team] -= def.cost;
+    this.upgrades[team].add(kind);
+    for (const u of this.units) if (u.team === team) this.applyMods(u);
+    if (kind === "reactors") this.recalcPower();
+    return true;
+  }
+
+  // AI: buy an affordable upgrade whose building it owns
+  aiTryUpgrade(team: Team) {
+    for (const kind of Object.keys(UPGRADES) as UpgradeKind[]) {
+      const def = UPGRADES[kind];
+      if (this.upgrades[team].has(kind)) continue;
+      if (!this.buildings.some((b) => b.alive && b.team === team && b.kind === def.building)) continue;
+      if (this.credits[team] < def.cost) continue;
+      this.purchaseUpgrade(team, kind);
+      return;
+    }
   }
 
   unitCost(kind: UnitKind, team: Team): number {
@@ -366,6 +406,7 @@ export class Game implements WorldApi, InputHandlers {
         provided += b.def.powerProvided;
         used += b.def.powerUsed;
       }
+      if (this.upgrades[team].has("reactors")) provided *= UPG_REACTOR_POWER;
       const net = provided - used;
       const noPower = this.factions[team].noPower;
       if (team === "player" && !noPower && net < 0 && this.power[team] >= 0) this.audio.lowPower();
@@ -594,13 +635,18 @@ export class Game implements WorldApi, InputHandlers {
     }
   }
 
-  // Build menu for a building, including this faction's signature unit.
+  // Build menu for a building: base units + faction signature + upgrades.
   producesFor(b: Building): BuildEntry[] {
+    const entries: BuildEntry[] = [...b.def.produces];
     const sig = this.factions[b.team].signature;
-    if (sig && sig.building === b.kind) {
-      return [...b.def.produces, { type: "unit", key: sig.unit, hotkey: sig.hotkey }];
+    if (sig && sig.building === b.kind) entries.push({ type: "unit", key: sig.unit, hotkey: sig.hotkey });
+    for (const kind of Object.keys(UPGRADES) as UpgradeKind[]) {
+      const def = UPGRADES[kind];
+      if (def.building === b.kind && !this.upgrades[b.team].has(kind)) {
+        entries.push({ type: "upgrade", key: kind, hotkey: def.hotkey });
+      }
     }
-    return b.def.produces;
+    return entries;
   }
 
   currentBuildEntries(): BuildEntry[] {
@@ -689,6 +735,22 @@ export class Game implements WorldApi, InputHandlers {
   // ---------------- build / placement ----------------
   private requestBuild(entry: BuildEntry) {
     if (this.status !== "playing") return;
+    if (entry.type === "upgrade") {
+      const key = entry.key as UpgradeKind;
+      const def = UPGRADES[key];
+      if (this.upgrades["player"].has(key)) {
+        this.showToast("Already researched");
+        return;
+      }
+      if (this.credits["player"] < def.cost) {
+        this.showToast("Not enough credits");
+        return;
+      }
+      this.purchaseUpgrade("player", key);
+      this.audio.build();
+      this.showToast(`${def.name} researched — ${def.blurb}`);
+      return;
+    }
     if (entry.type === "building") {
       const def = BUILDINGS[entry.key as BuildingKind];
       if (this.credits["player"] < this.buildingCost(entry.key as BuildingKind, "player")) {

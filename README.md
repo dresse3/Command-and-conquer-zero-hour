@@ -41,6 +41,19 @@ npm run preview
 | **Shift under placering** | Bliv i placeringstilstand (byg flere) |
 | **Esc** | Annullér placering / power / fjern markering |
 
+## Nyt i v0.8 — opgraderinger & tech
+
+Køb permanente, holdbrede forbedringer ved at vælge en bygning og klikke opgraderingen (guldfarvet knap) — én gang hver, virker på hele hæren:
+
+| Opgradering | Bygning | Effekt |
+|-------------|---------|--------|
+| **Weapons Upgrade** (G) | Barracks | +20% skade på alle enheder |
+| **Composite Armor** (J) | War Factory | +25% HP på alle enheder |
+| **Supply Lines** (U) | Supply Depot | +50% harvester-indkomst |
+| **Overcharged Reactors** (P) | Power Plant | +50% strøm-output |
+
+Opgraderinger anvendes med det samme på både eksisterende og nye enheder. Det giver Power Plant og Supply Depot et formål når de vælges, og en strategisk credit-sink til sent spil. AI'en forsker også i opgraderinger.
+
 ## Nyt i v0.7 — unikke faktions-enheder
 
 Faktionerne er ikke længere kun stat-varianter — hver har nu en **signatur-enhed** og en særtræk:
@@ -141,7 +154,8 @@ src/
 - [x] Smartere AI (rebuild, forsvar, brug af powers)
 - [x] Faktions-asymmetri (tre spilbare sider)
 - [x] Signatur-enhed + særtræk pr. faktion
-- [ ] Unikke bygninger/upgrades pr. faktion
+- [x] Opgraderinger / tech (våben, panser, økonomi, strøm)
+- [ ] Faktions-specifikke opgraderinger/superweapon-bygninger
 - [ ] AI-genererede sprites (foto-realistisk løft)
 - [ ] Pak som desktop-app (Tauri/Electron) for native Win/Mac
 
