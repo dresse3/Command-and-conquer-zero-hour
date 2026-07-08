@@ -5,6 +5,9 @@ import {
   GATHER_AMOUNT,
   GATHER_TIME,
   BUILD_TIME_MULT,
+  RUNWAY_LEN,
+  TAXI_SPEED,
+  RUNWAY_ROLL_SPEED,
   HARVESTER_REPAIR_RATE,
   VET_KILLS,
   VET_DAMAGE,
@@ -23,6 +26,15 @@ import { dist } from "./types";
 let NEXT_ID = 1;
 
 export type Target = Unit | Building;
+
+// The runway attached to an Airfield: a strip from the threshold (at the
+// building edge) out to the far end, along the building's runwayDir.
+export function runwayGeom(b: Building): { thrX: number; thrY: number; endX: number; endY: number } {
+  const half = (b.def.tilesW * TILE) / 2;
+  const thrX = b.x + b.runwayDir * (half - TILE * 0.4);
+  const thrY = b.y;
+  return { thrX, thrY, endX: thrX + b.runwayDir * RUNWAY_LEN, endY: thrY };
+}
 
 type UnitState =
   | "idle"
@@ -49,7 +61,11 @@ export class Unit {
   turretAngle = 0; // weapon facing
   muzzle = 0; // >0 for a few frames after firing (draws a muzzle flash)
   ammo = 0; // remaining shots for aircraft with an ammo count (jets)
-  landed = false; // fighter parked on its hangar pad
+  landed = false; // fighter parked on its hangar pad (kept for compatibility)
+  // jet runway sequence
+  airPhase: "parked" | "taxiOut" | "takeoff" | "airborne" | "approach" | "landing" | "taxiIn" = "parked";
+  altitude = 0; // 0 = on the ground, 1 = cruising height
+  mission: { type: "move"; x: number; y: number } | { type: "attack"; target: Target } | null = null;
 
   state: UnitState = "idle";
   path: Vec[] = [];
@@ -135,20 +151,27 @@ export class Unit {
 
   // --- commands issued by the player / AI ---
   moveTo(world: WorldApi, wx: number, wy: number, attackMove = false) {
+    if (this.isFighter) {
+      // jets fly the mission; the runway sequence launches them
+      this.mission = { type: "move", x: wx, y: wy };
+      return;
+    }
     this.target = null;
     this.holdGoal = attackMove ? { x: wx, y: wy } : null;
     this.state = attackMove ? "attack-move" : "moving";
     this.goal = { x: wx, y: wy };
     this.stuckTime = 0;
-    this.landed = false; // launch from the hangar
     this.computePath(world, wx, wy);
   }
 
   attack(target: Target) {
+    if (this.isFighter) {
+      this.mission = { type: "attack", target };
+      return;
+    }
     this.target = target;
     this.state = "attacking";
     this.path = [];
-    this.landed = false; // scramble to intercept
   }
 
   gather(world: WorldApi, field: SupplyField) {
@@ -203,18 +226,15 @@ export class Unit {
       this.hp = Math.min(this.maxHp, this.hp + VET_REGEN[this.rank] * dt);
     }
 
-    // aircraft with an empty magazine break off to rearm at an Airfield
-    if (this.maxAmmo > 0 && this.ammo <= 0 && this.state !== "rearm") {
-      this.state = "rearm";
-      this.target = null;
-      this.path = [];
+    // jets run their own runway/flight sequence
+    if (this.isFighter) {
+      this.updateJet(dt, world);
+      return;
     }
 
     switch (this.state) {
       case "idle":
-        // fighters return to their hangar and land instead of loitering
-        if (this.isFighter) this.flyHomeAndLand(dt, world);
-        else this.autoAcquire(world);
+        this.autoAcquire(world);
         break;
       case "moving":
         this.followPath(dt, world);
@@ -223,8 +243,7 @@ export class Unit {
         if (!this.autoAcquire(world)) this.followPath(dt, world);
         break;
       case "attacking":
-        if (this.def.flying) this.doAirAttack(dt, world);
-        else this.doAttack(dt, world);
+        this.doAttack(dt, world);
         break;
       case "gather":
         this.doGather(dt, world);
@@ -237,10 +256,6 @@ export class Unit {
         break;
       case "repair":
         this.doRepair(dt, world);
-        break;
-      case "rearm":
-        if (this.isFighter) this.flyHomeAndLand(dt, world);
-        else this.doRearm(dt, world);
         break;
     }
 
@@ -290,15 +305,36 @@ export class Unit {
     }
   }
 
-  // Aircraft attack: never stop — close in, then wheel around the target at
-  // weapon range firing on each pass until the magazine is dry.
-  private doAirAttack(dt: number, world: WorldApi) {
-    const t = this.target;
-    if (!t || !t.alive) {
-      this.target = null;
-      this.state = this.ammo > 0 ? "idle" : "rearm";
-      return;
+  // A parking slot on the apron (the side away from the runway) so up to four
+  // jets line up without stacking.
+  private padSlot(pad: Building): Vec {
+    const i = this.id % 4;
+    const ox = -pad.runwayDir * pad.def.tilesW * TILE * 0.24; // apron side
+    const oy = (i - 1.5) * pad.def.tilesH * TILE * 0.26; // spread along the apron
+    return { x: pad.x + ox, y: pad.y + oy };
+  }
+
+  // Move straight toward a point at `speed`; returns the distance still to go.
+  private moveToward(tx: number, ty: number, speed: number, dt: number): number {
+    const dx = tx - this.x;
+    const dy = ty - this.y;
+    const d = Math.hypot(dx, dy);
+    const step = speed * dt;
+    if (d <= step) {
+      this.x = tx;
+      this.y = ty;
+      return 0;
     }
+    this.x += (dx / d) * step;
+    this.y += (dy / d) * step;
+    this.angle = Math.atan2(dy, dx);
+    return d - step;
+  }
+
+  // One strafing pass: close in, then bank around the target firing. Returns
+  // false when the target is gone or the magazine is empty (time to go home).
+  private strafe(dt: number, world: WorldApi, t: Target): boolean {
+    if (!t.alive) return false;
     const dx = t.x - this.x;
     const dy = t.y - this.y;
     const d = Math.hypot(dx, dy) || 1;
@@ -307,11 +343,9 @@ export class Unit {
     let vx: number;
     let vy: number;
     if (d > range * 0.85) {
-      // approach run
       vx = dx / d;
       vy = dy / d;
     } else {
-      // bank around the target (tangential) holding roughly weapon range
       const tx = -dy / d;
       const ty = dx / d;
       const radial = d < range * 0.5 ? -0.5 : d > range * 0.78 ? 0.5 : 0;
@@ -330,60 +364,91 @@ export class Unit {
       this.muzzle = 0.09;
       this.ammo--;
     }
+    return this.ammo > 0;
   }
 
-  // Legacy cargo-aircraft rearm (unused by hangar fighters) — kept for any
-  // non-fighter that might need to reload in place.
-  private doRearm(dt: number, world: WorldApi) {
-    if (this.ammo >= this.maxAmmo) {
-      this.state = "idle";
+  // Execute the current mission while airborne; clears it when finished.
+  private flyMission(dt: number, world: WorldApi) {
+    const m = this.mission;
+    if (!m) return;
+    if (m.type === "attack") {
+      if (!this.strafe(dt, world, m.target)) this.mission = null;
+    } else {
+      if (this.moveToward(m.x, m.y, this.speed, dt) <= 8) this.mission = null;
+    }
+  }
+
+  // The jet flight cycle: parked → taxi to the runway → take-off roll → fly the
+  // mission → approach → landing roll → taxi back to the pad → parked.
+  private updateJet(dt: number, world: WorldApi) {
+    const home = world.nearestRearm(this.x, this.y, this.team);
+    // a fresh order resumes flight / launches from the pad
+    if (this.mission) {
+      if (this.airPhase === "approach") this.airPhase = "airborne";
+      else if (this.airPhase === "parked" || this.airPhase === "taxiIn") this.airPhase = "taxiOut";
+    }
+    if (!home) {
+      // no hangar left: fly the mission or loiter, self-rearm slowly
+      this.altitude = 1;
+      if (this.mission) this.flyMission(dt, world);
+      else this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / ((this.def.rearmTime ?? 8) * 3)) * dt);
       return;
     }
-    this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / ((this.def.rearmTime ?? 8) * 3)) * dt);
-    void world;
-  }
-
-  // A parking slot around the airfield so up to four jets don't stack.
-  private padSlot(pad: Building): Vec {
-    const i = this.id % 4;
-    const ox = (i % 2 === 0 ? -1 : 1) * pad.def.tilesW * TILE * 0.26;
-    const oy = (i < 2 ? -1 : 1) * pad.def.tilesH * TILE * 0.26;
-    return { x: pad.x + ox, y: pad.y + oy };
-  }
-
-  // Fly back to the home hangar, land on a pad and reload ammo. Used whenever a
-  // fighter is idle or has finished its order — it never loiters in the air.
-  private flyHomeAndLand(dt: number, world: WorldApi) {
-    const pad = world.nearestRearm(this.x, this.y, this.team);
-    if (!pad) {
-      // no hangar left — drift and slowly self-rearm so it isn't useless
-      this.landed = false;
-      this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / ((this.def.rearmTime ?? 8) * 3)) * dt);
-      return;
-    }
-    const slot = this.padSlot(pad);
-    const dx = slot.x - this.x;
-    const dy = slot.y - this.y;
-    const d = Math.hypot(dx, dy);
-    if (d > 5) {
-      this.landed = false;
-      const step = this.speed * dt;
-      if (d <= step) {
-        this.x = slot.x;
-        this.y = slot.y;
-      } else {
-        this.x += (dx / d) * step;
-        this.y += (dy / d) * step;
-        this.angle = Math.atan2(dy, dx);
+    const rw = runwayGeom(home);
+    const slot = this.padSlot(home);
+    const runLen = Math.hypot(rw.endX - rw.thrX, rw.endY - rw.thrY) || 1;
+    switch (this.airPhase) {
+      case "parked":
+        this.altitude = 0;
+        this.landed = true;
+        this.moveToward(slot.x, slot.y, TAXI_SPEED, dt);
+        this.angle = home.runwayDir > 0 ? 0 : Math.PI;
+        if (this.ammo < this.maxAmmo)
+          this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / (this.def.rearmTime ?? 8)) * dt);
+        break;
+      case "taxiOut":
+        this.altitude = 0;
+        this.landed = true;
+        if (this.moveToward(rw.thrX, rw.thrY, TAXI_SPEED, dt) <= 0.5) this.airPhase = "takeoff";
+        break;
+      case "takeoff": {
+        this.landed = false;
+        const rem = this.moveToward(rw.endX, rw.endY, RUNWAY_ROLL_SPEED, dt);
+        this.altitude = Math.min(1, (1 - rem / runLen) * 1.3);
+        if (rem <= 0.5) {
+          this.airPhase = "airborne";
+          this.altitude = 1;
+        }
+        break;
       }
-      return;
-    }
-    // landed on the pad — sit and reload
-    this.landed = true;
-    this.x = slot.x;
-    this.y = slot.y;
-    if (this.ammo < this.maxAmmo) {
-      this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / (this.def.rearmTime ?? 8)) * dt);
+      case "airborne":
+        this.altitude = 1;
+        this.landed = false;
+        if (this.mission) this.flyMission(dt, world);
+        else this.airPhase = "approach";
+        break;
+      case "approach": {
+        this.altitude = 1;
+        this.landed = false;
+        // line up on the far end of the runway and touch down
+        if (this.moveToward(rw.endX, rw.endY, this.speed, dt) <= this.speed * dt * 1.5 + 2) this.airPhase = "landing";
+        break;
+      }
+      case "landing": {
+        this.landed = false;
+        const rem = this.moveToward(rw.thrX, rw.thrY, RUNWAY_ROLL_SPEED, dt);
+        this.altitude = Math.max(0, rem / runLen);
+        if (rem <= 0.5) {
+          this.airPhase = "taxiIn";
+          this.altitude = 0;
+        }
+        break;
+      }
+      case "taxiIn":
+        this.altitude = 0;
+        this.landed = true;
+        if (this.moveToward(slot.x, slot.y, TAXI_SPEED, dt) <= 0.5) this.airPhase = "parked";
+        break;
     }
   }
 
@@ -613,6 +678,7 @@ export class Building {
   // production, no weapon) and rises from 0 to full over its build time.
   constructing = false;
   buildProgress = 1; // 0..1
+  runwayDir: 1 | -1 = 1; // Airfield: which way its runway extends (set on placement)
 
   constructor(public team: Team, public kind: BuildingKind, public tileX: number, public tileY: number) {
     this.def = BUILDINGS[kind];

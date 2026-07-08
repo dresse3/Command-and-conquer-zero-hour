@@ -45,6 +45,16 @@ npm run preview
 | **Esc** | Annullér placering / power / fjern markering |
 | **Play Again** (efter sejr/nederlag) | Start en ny kamp med nyt kort og ny modstander |
 
+## Nyt i v1.8 — landingsbane på hangaren 🛫
+
+Airfield'en har nu en rigtig **landingsbane**, og jetjagerne bruger den som i det originale spil:
+
+- **Landingsbane koblet på hangaren:** en asfaltstribe med midterstribe og tærskel-markeringer strækker sig ud fra Airfield'en (mod midten af mappet).
+- **Fuld start-sekvens:** parkeret jet → **taxier** ud til banen → **starter** (ruller ned ad banen og letter) → flyver sin ordre.
+- **Fuld lande-sekvens:** når ordren er udført → **indflyvning** til banens ende → **lander** (ruller ned ad banen) → **taxier tilbage** til sin plads → parkeret og genoplader.
+- Højden animeres nu jævnt: flyet stiger af banen ved start og synker ned igen ved landing (efterbrænder kun under kraft).
+- Nybyggede jets flyver ind og lander på banen, før de kører på plads.
+
 ## Nyt i v1.7 — rigtige hangar-baserede jetjagere ✈️
 
 Luftsystemet fungerer nu som i det originale spil:

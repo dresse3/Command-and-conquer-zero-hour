@@ -363,8 +363,8 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     cost: 900,
     buildTime: 12,
     maxHp: 1100,
-    tilesW: 3,
-    tilesH: 2,
+    tilesW: 4,
+    tilesH: 3,
     powerProvided: 0,
     powerUsed: 40,
     needsPower: true,
@@ -410,6 +410,11 @@ export const BUILD_TIME_MULT = 2.2;
 
 // Each Airfield is a hangar for up to this many jet fighters.
 export const JET_CAP_PER_AIRFIELD = 4;
+// Length (px) of the runway strip that extends from the Airfield — jets roll
+// down it to take off and touch down on it before taxiing to their pad.
+export const RUNWAY_LEN = TILE * 6;
+export const TAXI_SPEED = 48; // ground taxi speed
+export const RUNWAY_ROLL_SPEED = 150; // take-off / landing roll speed
 
 // Repair & healing
 export const HARVESTER_REPAIR_RATE = 90; // building HP/sec a harvester restores
