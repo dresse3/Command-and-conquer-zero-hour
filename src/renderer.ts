@@ -39,6 +39,7 @@ export class Renderer {
     this.drawTerrain(game);
     this.drawSupply(game);
     this.drawRunways(game);
+    this.drawScenery(game);
     this.drawFog(game);
     if (game.selectedBuilding) this.drawRally(game.selectedBuilding);
     for (const b of game.buildings) {
@@ -57,6 +58,7 @@ export class Renderer {
     game.effects.draw(ctx);
     game.playerPowers.draw(ctx);
     game.enemyPowers.draw(ctx);
+    this.drawBirds(game);
     if (game.placement) this.drawPlacementGhost(game);
 
     ctx.restore();
@@ -89,61 +91,61 @@ export class Renderer {
         const n = this.tileNoise(tx, ty);
         const px = tx * TILE;
         const py = ty * TILE;
+        // Sand base under everything (so rock edges blend, no hard squares)
+        const dune = this.dune(tx, ty); // 0..1 smooth large-scale shading
+        ctx.fillStyle = COLORS.grass;
+        ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
+        const shade = (dune - 0.5) * 0.12;
+        ctx.fillStyle = shade >= 0 ? `rgba(255,240,200,${shade})` : `rgba(60,45,25,${-shade})`;
+        ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
+
         if (c.terrain === 2) {
-          // rocky outcrop — layered boulder for depth
-          ctx.fillStyle = COLORS.dirt;
-          ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
-          ctx.fillStyle = "rgba(0,0,0,0.18)";
+          // Rocky outcrop drawn as an organic cluster: a main boulder offset and
+          // sized by noise, plus a couple of satellite stones, so a field of rock
+          // tiles reads as a natural mass rather than a grid of eggs.
+          const n2 = this.tileNoise(tx * 3 + 1, ty * 7 + 2);
+          const n3 = this.tileNoise(tx * 5 + 4, ty * 3 + 6);
+          const ccx = px + TILE / 2 + (n - 0.5) * TILE * 0.4;
+          const ccy = py + TILE / 2 + (n2 - 0.5) * TILE * 0.4;
+          const rr = TILE * (0.4 + n3 * 0.16);
+          ctx.fillStyle = "rgba(0,0,0,0.2)";
           ctx.beginPath();
-          ctx.ellipse(px + TILE / 2 + 2, py + TILE / 2 + 3, TILE * 0.44, TILE * 0.34, n * 3, 0, Math.PI * 2);
+          ctx.ellipse(ccx + 3, ccy + 4, rr, rr * 0.78, n * 3, 0, Math.PI * 2);
           ctx.fill();
+          const shadeR = 0.85 + (n2 - 0.5) * 0.25;
+          ctx.fillStyle = `rgb(${Math.round(0x6d * shadeR)},${Math.round(0x5d * shadeR)},${Math.round(0x45 * shadeR)})`;
+          ctx.beginPath();
+          ctx.ellipse(ccx, ccy, rr, rr * 0.8, n * 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "rgba(210,190,150,0.22)";
+          ctx.beginPath();
+          ctx.ellipse(ccx - rr * 0.28, ccy - rr * 0.3, rr * 0.42, rr * 0.28, 0, 0, Math.PI * 2);
+          ctx.fill();
+          // satellite stone
           ctx.fillStyle = COLORS.rock;
           ctx.beginPath();
-          ctx.ellipse(px + TILE / 2, py + TILE / 2, TILE * 0.42, TILE * 0.32, n * 3, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = "rgba(255,255,255,0.10)";
-          ctx.beginPath();
-          ctx.ellipse(px + TILE * 0.38, py + TILE * 0.36, TILE * 0.2, TILE * 0.13, 0, 0, Math.PI * 2);
+          ctx.ellipse(px + n3 * TILE, py + (1 - n) * TILE, TILE * 0.14, TILE * 0.1, 0, 0, Math.PI * 2);
           ctx.fill();
         } else {
-          // Organic sand: a single low-contrast base (no checkerboard) plus a
-          // slow dune gradient for large-scale shading. "Dirt" tiles are drawn
-          // as soft blotches over the sand rather than hard squares.
-          const dune = this.dune(tx, ty); // 0..1 smooth
-          ctx.fillStyle = COLORS.grass;
-          ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
-          // dune light/shadow bands
-          const shade = (dune - 0.5) * 0.14;
-          ctx.fillStyle = shade >= 0 ? `rgba(255,240,200,${shade})` : `rgba(60,45,25,${-shade})`;
-          ctx.fillRect(px, py, TILE + 0.5, TILE + 0.5);
           if (c.terrain === 1) {
-            // soft dirt patch — overlaps tile edges so it never reads as a grid
-            ctx.fillStyle = "rgba(140,105,58,0.55)";
+            // subtle dirt discolouration (flat, low-contrast — no big brown blob)
+            ctx.fillStyle = "rgba(150,116,66,0.28)";
             ctx.beginPath();
-            ctx.ellipse(px + TILE / 2, py + TILE / 2, TILE * 0.62, TILE * 0.52, n * 3, 0, Math.PI * 2);
-            ctx.fill();
-          } else {
-            // faint wind ripples
-            ctx.strokeStyle = "rgba(120,95,55,0.10)";
-            ctx.lineWidth = 1;
-            const oy = py + n * TILE;
-            ctx.beginPath();
-            ctx.moveTo(px, oy);
-            ctx.quadraticCurveTo(px + TILE / 2, oy - 3, px + TILE, oy);
-            ctx.stroke();
-          }
-          // sparse pebbles / scrub, deterministic per tile
-          if (n > 0.86) {
-            ctx.fillStyle = "rgba(80,62,38,0.5)";
-            ctx.beginPath();
-            ctx.arc(px + n * TILE, py + (1 - n) * TILE, 1.6, 0, Math.PI * 2);
-            ctx.fill();
-          } else if (n < 0.06) {
-            ctx.fillStyle = "rgba(150,120,70,0.35)";
-            ctx.beginPath();
-            ctx.arc(px + (1 - n) * TILE * 4 % TILE, py + n * TILE * 5 % TILE, 1.3, 0, Math.PI * 2);
+            ctx.ellipse(px + TILE / 2, py + TILE / 2, TILE * 0.66, TILE * 0.56, n * 3, 0, Math.PI * 2);
             ctx.fill();
           }
+          // faint wind ripples
+          ctx.strokeStyle = "rgba(120,95,55,0.09)";
+          ctx.lineWidth = 1;
+          const oy = py + n * TILE;
+          ctx.beginPath();
+          ctx.moveTo(px, oy);
+          ctx.quadraticCurveTo(px + TILE / 2, oy - 3, px + TILE, oy);
+          ctx.stroke();
+          // a single fine sand-grain speckle for texture (kept cheap)
+          const g1 = this.tileNoise(tx * 11 + 5, ty * 13 + 9);
+          ctx.fillStyle = g1 > 0.5 ? "rgba(255,244,210,0.15)" : "rgba(90,70,42,0.12)";
+          ctx.fillRect(px + g1 * TILE, py + (1 - g1) * TILE, 1.6, 1.6);
         }
       }
     }
@@ -239,6 +241,195 @@ export class Renderer {
         ctx.stroke();
       }
       ctx.restore();
+    }
+  }
+
+  // Decorative scenery (bushes, trees, cacti, rocks, grass) — culled to the view
+  // and hidden in unexplored fog. Each prop gets a soft drop-shadow for depth.
+  private drawScenery(game: Game) {
+    const ctx = this.ctx;
+    const cam = game.camera;
+    const x0 = cam.x - 40;
+    const y0 = cam.y - 48;
+    const x1 = cam.x + cam.viewW / cam.zoom + 40;
+    const y1 = cam.y + cam.viewH / cam.zoom + 48;
+    // zoomed far out there can be hundreds of props on screen — draw a cheap
+    // blob for each instead of the full detailed sprite.
+    const lod = cam.zoom < 0.72;
+    for (const p of game.scenery) {
+      if (p.x < x0 || p.x > x1 || p.y < y0 || p.y > y1) continue;
+      if (!game.fog.isExploredWorld(p.x, p.y)) continue;
+      if (lod) {
+        if (p.kind === "grass") continue; // too small to see when zoomed out
+        const veg = p.kind === "rock" ? "#6d5d45" : p.kind === "cactus" ? "#4e7a44" : p.kind === "deadbush" ? "#9c8250" : "#516a30";
+        const s = (p.kind === "tree" ? 8 : 5) * p.r;
+        ctx.fillStyle = "rgba(30,22,10,0.15)";
+        ctx.beginPath();
+        ctx.ellipse(p.x + 2, p.y + 2, s * 0.9, s * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = veg;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y - s * 0.3, s, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      this.drawProp(ctx, p);
+    }
+  }
+
+  private drawProp(ctx: CanvasRenderingContext2D, p: { kind: string; x: number; y: number; r: number; seed: number }) {
+    const x = p.x;
+    const y = p.y;
+    const r = p.r;
+    const softShadow = (rx: number, ry: number) => {
+      ctx.fillStyle = "rgba(30,22,10,0.16)";
+      ctx.beginPath();
+      ctx.ellipse(x + rx * 0.4, y + ry * 0.5, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    switch (p.kind) {
+      case "grass": {
+        const s = 6 * r;
+        ctx.strokeStyle = p.seed % 2 ? "#8a934f" : "#7c854a";
+        ctx.lineWidth = 1.3;
+        for (let i = -2; i <= 2; i++) {
+          ctx.beginPath();
+          ctx.moveTo(x + i * 1.7, y + 2);
+          ctx.quadraticCurveTo(x + i * 2.4, y - s * 0.6, x + i * 2.6, y - s);
+          ctx.stroke();
+        }
+        break;
+      }
+      case "bush": {
+        const s = 8 * r;
+        softShadow(s * 0.9, s * 0.42);
+        const blobs = [
+          [-s * 0.45, 0, s * 0.6, "#49602c"],
+          [s * 0.45, s * 0.1, s * 0.55, "#49602c"],
+          [0, -s * 0.35, s * 0.62, "#59733a"],
+          [-s * 0.1, s * 0.05, s * 0.5, "#67833f"],
+        ] as const;
+        for (const [dx, dy, rad, col] of blobs) {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(x + dx, y + dy, rad, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = "rgba(180,200,120,0.4)";
+        ctx.beginPath();
+        ctx.arc(x - s * 0.2, y - s * 0.4, s * 0.24, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "deadbush": {
+        const s = 7 * r;
+        softShadow(s * 0.8, s * 0.35);
+        ctx.strokeStyle = "#a98b56";
+        ctx.lineWidth = 1.2;
+        for (let i = 0; i < 7; i++) {
+          const a = (i / 7) * Math.PI * 2 + p.seed;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + Math.cos(a) * s, y + Math.sin(a) * s * 0.8);
+          ctx.stroke();
+        }
+        break;
+      }
+      case "rock": {
+        const s = 7 * r;
+        softShadow(s * 0.95, s * 0.45);
+        ctx.fillStyle = "#6d5d45";
+        ctx.beginPath();
+        ctx.ellipse(x, y, s * 0.85, s * 0.62, p.seed, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(190,170,130,0.35)";
+        ctx.beginPath();
+        ctx.ellipse(x - s * 0.22, y - s * 0.24, s * 0.4, s * 0.26, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "cactus": {
+        const s = 12 * r;
+        softShadow(s * 0.45, s * 0.28);
+        ctx.strokeStyle = "#3f6b39";
+        ctx.lineCap = "round";
+        ctx.lineWidth = 4.5 * r;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y - s);
+        ctx.stroke();
+        ctx.lineWidth = 3 * r;
+        ctx.beginPath();
+        ctx.moveTo(x, y - s * 0.5);
+        ctx.lineTo(x - s * 0.4, y - s * 0.5);
+        ctx.lineTo(x - s * 0.4, y - s * 0.78);
+        ctx.moveTo(x, y - s * 0.66);
+        ctx.lineTo(x + s * 0.38, y - s * 0.66);
+        ctx.lineTo(x + s * 0.38, y - s * 0.92);
+        ctx.stroke();
+        ctx.lineCap = "butt";
+        break;
+      }
+      case "tree": {
+        const s = 15 * r;
+        softShadow(s * 0.95, s * 0.42);
+        ctx.strokeStyle = "#5a4327";
+        ctx.lineWidth = 3 * r;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y - s * 0.5);
+        ctx.stroke();
+        const canopy = [
+          [0, -s * 0.75, s * 0.6, "#3f5a2b"],
+          [-s * 0.4, -s * 0.6, s * 0.48, "#48642f"],
+          [s * 0.4, -s * 0.6, s * 0.46, "#48642f"],
+          [0, -s * 0.55, s * 0.5, "#547239"],
+        ] as const;
+        for (const [dx, dy, rad, col] of canopy) {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(x + dx, y + dy, rad, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = "rgba(190,210,130,0.35)";
+        ctx.beginPath();
+        ctx.arc(x - s * 0.28, y - s * 0.85, s * 0.24, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+    }
+  }
+
+  // A few birds drifting across the sky with flapping wings + faint shadows.
+  private drawBirds(game: Game) {
+    const ctx = this.ctx;
+    const t = performance.now() / 1000;
+    const W = game.grid.w * TILE;
+    const H = game.grid.h * TILE;
+    const cam = game.camera;
+    const x0 = cam.x - 20;
+    const y0 = cam.y - 20;
+    const x1 = cam.x + cam.viewW / cam.zoom + 20;
+    const y1 = cam.y + cam.viewH / cam.zoom + 20;
+    const N = 9;
+    for (let i = 0; i < N; i++) {
+      const speed = 26 + (i % 4) * 11;
+      const bx = ((t * speed + i * 260) % (W + 300)) - 150;
+      const by = (i * H) / N + 40 + Math.sin(t * 0.5 + i * 1.7) * 34;
+      if (bx < x0 || bx > x1 || by < y0 || by > y1) continue;
+      if (!game.fog.isExploredWorld(bx, by)) continue;
+      const flap = Math.sin(t * 9 + i * 2) * 2.2;
+      ctx.fillStyle = "rgba(0,0,0,0.10)";
+      ctx.beginPath();
+      ctx.ellipse(bx + 10, by + 22, 3.4, 1.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(28,28,34,0.7)";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(bx - 5, by + flap);
+      ctx.quadraticCurveTo(bx - 1, by - 2 - flap, bx, by);
+      ctx.quadraticCurveTo(bx + 1, by - 2 - flap, bx + 5, by + flap);
+      ctx.stroke();
     }
   }
 
