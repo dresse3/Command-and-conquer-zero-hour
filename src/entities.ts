@@ -24,7 +24,16 @@ let NEXT_ID = 1;
 
 export type Target = Unit | Building;
 
-type UnitState = "idle" | "moving" | "attack-move" | "attacking" | "gather" | "return" | "build" | "repair";
+type UnitState =
+  | "idle"
+  | "moving"
+  | "attack-move"
+  | "attacking"
+  | "gather"
+  | "return"
+  | "build"
+  | "repair"
+  | "rearm";
 
 export class Unit {
   id = NEXT_ID++;
@@ -39,6 +48,7 @@ export class Unit {
   angle = 0; // body / movement facing
   turretAngle = 0; // weapon facing
   muzzle = 0; // >0 for a few frames after firing (draws a muzzle flash)
+  ammo = 0; // remaining shots for aircraft with an ammo count (jets)
 
   state: UnitState = "idle";
   path: Vec[] = [];
@@ -80,6 +90,11 @@ export class Unit {
     this.radius = this.def.radius;
     this.x = x;
     this.y = y;
+    this.ammo = this.def.ammo ?? 0;
+  }
+
+  get maxAmmo() {
+    return this.def.ammo ?? 0;
   }
 
   get maxHp() {
@@ -179,6 +194,13 @@ export class Unit {
       this.hp = Math.min(this.maxHp, this.hp + VET_REGEN[this.rank] * dt);
     }
 
+    // aircraft with an empty magazine break off to rearm at an Airfield
+    if (this.maxAmmo > 0 && this.ammo <= 0 && this.state !== "rearm") {
+      this.state = "rearm";
+      this.target = null;
+      this.path = [];
+    }
+
     switch (this.state) {
       case "idle":
         this.autoAcquire(world);
@@ -190,7 +212,8 @@ export class Unit {
         if (!this.autoAcquire(world)) this.followPath(dt, world);
         break;
       case "attacking":
-        this.doAttack(dt, world);
+        if (this.def.flying) this.doAirAttack(dt, world);
+        else this.doAttack(dt, world);
         break;
       case "gather":
         this.doGather(dt, world);
@@ -203,6 +226,9 @@ export class Unit {
         break;
       case "repair":
         this.doRepair(dt, world);
+        break;
+      case "rearm":
+        this.doRearm(dt, world);
         break;
     }
 
@@ -249,6 +275,69 @@ export class Unit {
         this.muzzle = 0.09;
       }
     }
+  }
+
+  // Aircraft attack: never stop — close in, then wheel around the target at
+  // weapon range firing on each pass until the magazine is dry.
+  private doAirAttack(dt: number, world: WorldApi) {
+    const t = this.target;
+    if (!t || !t.alive) {
+      this.target = null;
+      this.state = this.ammo > 0 ? "idle" : "rearm";
+      return;
+    }
+    const dx = t.x - this.x;
+    const dy = t.y - this.y;
+    const d = Math.hypot(dx, dy) || 1;
+    this.turretAngle = Math.atan2(dy, dx);
+    const range = this.def.range;
+    let vx: number;
+    let vy: number;
+    if (d > range * 0.85) {
+      // approach run
+      vx = dx / d;
+      vy = dy / d;
+    } else {
+      // bank around the target (tangential) holding roughly weapon range
+      const tx = -dy / d;
+      const ty = dx / d;
+      const radial = d < range * 0.5 ? -0.5 : d > range * 0.78 ? 0.5 : 0;
+      vx = tx + (dx / d) * radial;
+      vy = ty + (dy / d) * radial;
+      const l = Math.hypot(vx, vy) || 1;
+      vx /= l;
+      vy /= l;
+    }
+    this.x += vx * this.speed * dt;
+    this.y += vy * this.speed * dt;
+    this.angle = Math.atan2(vy, vx);
+    if (d <= range + t.radius && this.fireCd <= 0 && this.ammo > 0) {
+      world.spawnProjectile({ x: this.x, y: this.y }, t, this.currentDamage, this.team, this.def.splash, this);
+      this.fireCd = 1 / this.def.fireRate;
+      this.muzzle = 0.09;
+      this.ammo--;
+    }
+  }
+
+  // Fly back to the nearest friendly Airfield and reload; then return to duty.
+  private doRearm(dt: number, world: WorldApi) {
+    if (this.ammo >= this.maxAmmo) {
+      this.state = "idle";
+      return;
+    }
+    const pad = world.nearestRearm(this.x, this.y, this.team);
+    if (!pad) {
+      // no hangar left — slowly self-rearm in the field so it isn't useless
+      this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / ((this.def.rearmTime ?? 8) * 3)) * dt);
+      return;
+    }
+    if (dist(this, pad) > pad.radius + this.radius + 4) {
+      this.path = [{ x: pad.x, y: pad.y }]; // flying: straight line
+      this.stepAlongPath(dt, world);
+      return;
+    }
+    // docked over the hangar: rearm
+    this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / (this.def.rearmTime ?? 8)) * dt);
   }
 
   private doGather(dt: number, world: WorldApi) {

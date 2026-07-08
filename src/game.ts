@@ -12,6 +12,7 @@ import {
   FACTORY_HEAL_RANGE,
   ATTACK_ALARM_COOLDOWN,
   BUILD_TIME_MULT,
+  JET_CAP_PER_AIRFIELD,
   AI_CONFIGS,
   type Team,
   type UnitKind,
@@ -474,6 +475,30 @@ export class Game implements WorldApi, InputHandlers {
       }
     }
     return best;
+  }
+
+  // Nearest friendly, working Airfield — where jets land to rearm.
+  nearestRearm(x: number, y: number, team: Team): Building | null {
+    let best: Building | null = null;
+    let bestD = Infinity;
+    for (const b of this.buildings) {
+      if (!b.alive || b.team !== team || b.kind !== "airfield" || !b.functional) continue;
+      const d = dist2(x, y, b.x, b.y);
+      if (d < bestD) {
+        bestD = d;
+        best = b;
+      }
+    }
+    return best;
+  }
+
+  private jetCap(team: Team): number {
+    const airfields = this.buildings.filter((b) => b.alive && !b.constructing && b.team === team && b.kind === "airfield").length;
+    return airfields * JET_CAP_PER_AIRFIELD;
+  }
+
+  private jetCount(team: Team): number {
+    return this.units.filter((u) => u.alive && u.team === team && u.kind === "jet").length;
   }
 
   addCredits(team: Team, amount: number) {
@@ -1054,8 +1079,21 @@ export class Game implements WorldApi, InputHandlers {
       this.showToast("Building has no power");
       return;
     }
-    const def = UNITS[entry.key as UnitKind];
-    const cost = this.unitCost(entry.key as UnitKind, "player");
+    const kind = entry.key as UnitKind;
+    const def = UNITS[kind];
+    // Airfields are hangars: at most JET_CAP_PER_AIRFIELD jets each (built +
+    // queued combined) may be stationed.
+    if (kind === "jet") {
+      const queued = this.buildings.reduce(
+        (n, bl) => n + (bl.team === "player" ? bl.queue.filter((q) => q.kind === "jet").length : 0),
+        0,
+      );
+      if (this.jetCount("player") + queued >= this.jetCap("player")) {
+        this.showToast(`Hangar full — ${JET_CAP_PER_AIRFIELD} jets per Airfield`);
+        return;
+      }
+    }
+    const cost = this.unitCost(kind, "player");
     if (this.credits["player"] < cost) {
       this.showToast("Not enough credits");
       return;
@@ -1065,7 +1103,7 @@ export class Game implements WorldApi, InputHandlers {
       return;
     }
     this.credits["player"] -= cost;
-    b.enqueue(entry.key as UnitKind, def.buildTime * BUILD_TIME_MULT);
+    b.enqueue(kind, def.buildTime * BUILD_TIME_MULT);
     this.audio.build();
     this.showToast(`Queued ${def.name}`);
   }
