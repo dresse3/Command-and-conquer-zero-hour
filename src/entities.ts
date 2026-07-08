@@ -4,6 +4,7 @@ import {
   TILE,
   GATHER_AMOUNT,
   GATHER_TIME,
+  BUILD_TIME_MULT,
   HARVESTER_REPAIR_RATE,
   VET_KILLS,
   VET_DAMAGE,
@@ -268,7 +269,7 @@ export class Unit {
     }
     this.gatherTimer += dt;
     if (this.gatherTimer >= GATHER_TIME) {
-      this.carrying = field.take(GATHER_AMOUNT * this.gatherMult);
+      this.carrying = field.take((this.def.gatherAmount ?? GATHER_AMOUNT) * this.gatherMult);
       this.gatherTimer = 0;
       this.state = "return";
       this.path = [];
@@ -518,7 +519,7 @@ export class Building {
   update(dt: number, world: WorldApi): UnitKind | null {
     // rise from the ground while under construction — inert until finished
     if (this.constructing) {
-      this.buildProgress += dt / this.def.buildTime;
+      this.buildProgress += dt / (this.def.buildTime * BUILD_TIME_MULT);
       this.hp = Math.min(this.maxHp, this.maxHp * (0.1 + 0.9 * this.buildProgress));
       if (this.buildProgress >= 1) {
         this.buildProgress = 1;
@@ -566,11 +567,13 @@ export class SupplyField {
   y: number;
   radius = TILE * 0.9;
   remaining: number;
+  readonly initial: number;
 
   constructor(public tileX: number, public tileY: number, amount: number) {
     this.x = (tileX + 0.5) * TILE;
     this.y = (tileY + 0.5) * TILE;
     this.remaining = amount;
+    this.initial = amount;
   }
 
   get alive() {

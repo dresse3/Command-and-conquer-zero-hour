@@ -184,7 +184,7 @@ export class Renderer {
     const ctx = this.ctx;
     for (const f of game.supplyFields) {
       if (!game.fog.isExploredWorld(f.x, f.y)) continue;
-      const frac = Math.max(0.25, f.remaining / 4000);
+      const frac = Math.max(0.25, Math.min(1, f.remaining / f.initial));
       const r = f.radius * frac;
       this.shadow(ctx, f.x, f.y + 4, r * 0.7, r * 0.4);
       ctx.fillStyle = COLORS.supply;

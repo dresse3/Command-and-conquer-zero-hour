@@ -33,6 +33,7 @@ export interface UnitDef {
   fireRate: number; // shots / second
   splash: number; // splash radius in px (0 = single target)
   canGather: boolean;
+  gatherAmount?: number; // credits carried per trip (defaults to GATHER_AMOUNT)
   canBuild?: boolean; // can construct/repair structures (the harvester/dozer)
   flying?: boolean; // ignores terrain & unit collision (aircraft)
 }
@@ -128,6 +129,7 @@ export const UNITS: Record<UnitKind, UnitDef> = {
     fireRate: 0,
     splash: 0,
     canGather: true, // flies supplies in — faster, ignores terrain
+    gatherAmount: 340, // hauls far more per trip than a ground harvester
     flying: true,
   },
   // ---- faction signature units ----
@@ -372,10 +374,16 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
 };
 
 // Harvester economy
-export const GATHER_AMOUNT = 100; // credits per trip
+export const GATHER_AMOUNT = 100; // credits per trip (default; see UnitDef.gatherAmount)
 export const GATHER_TIME = 3.5; // seconds to fill up at a supply field
-export const SUPPLY_FIELD_START = 4000; // credits available in a field
+// Supply fields hold a huge reserve so you can mine one spot for most of a
+// match — economy is meant to sustain long (up to ~1 hour) games.
+export const SUPPLY_FIELD_START = 60000; // credits available in a field
 export const BUILD_RADIUS = TILE * 7; // how far from own buildings you may place
+
+// Global build-time multiplier — production and construction are slow so
+// amassing an army and cracking a base takes real time (longer matches).
+export const BUILD_TIME_MULT = 2.2;
 
 // Repair & healing
 export const HARVESTER_REPAIR_RATE = 90; // building HP/sec a harvester restores
@@ -403,12 +411,12 @@ export interface AIConfig {
 export const AI_CONFIGS: Record<Difficulty, AIConfig> = {
   easy: {
     label: "Easy",
-    blurb: "Passive economy, small late attacks, no superweapons.",
-    incomeMult: 0.7,
-    buildInterval: 5,
-    economyInterval: 8,
-    attackArmy: 9,
-    attackInterval: 55,
+    blurb: "Turtles in its base — poor economy, rarely pushes out, no superweapons.",
+    incomeMult: 0.45,
+    buildInterval: 10,
+    economyInterval: 13,
+    attackArmy: 18,
+    attackInterval: 130,
     usePowers: false,
     maxProdQueue: 1,
   },

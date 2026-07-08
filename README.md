@@ -45,6 +45,15 @@ npm run preview
 | **Esc** | Annullér placering / power / fjern markering |
 | **Play Again** (efter sejr/nederlag) | Start en ny kamp med nyt kort og ny modstander |
 
+## Nyt i v1.5 — langsommere tempo, større miner & passiv Easy ⏳
+
+Kampene er nu bygget til at kunne vare længe (op mod en time):
+
+- **Meget større forsyningsfelter:** hvert felt indeholder nu **60.000** i stedet for 4.000, så du kan mine fra det samme sted næsten hele kampen igennem.
+- **Længere byggetider:** både enheder og bygninger tager **~2,2× så lang tid** at producere, så det at opbygge en hær og knække en base tager rigtig tid.
+- **Supply Chinook virker nu tydeligt:** helikopteren henter **340 pr. tur** (mod harvesterens 100) og flyver hurtigt i lige linje — i test gav den ~5× en harvesters indkomst, så luft-økonomien er nu en reel opgradering.
+- **Easy er blevet passiv:** dårligere økonomi (indkomst ×0,45), langsomt byggetempo og angriber stort set aldrig (den forskanser sig i basen). Hard er stadig nådesløs.
+
 ## Nyt i v1.4 — sværhedsgrader, skjulte baser & balancering ⚔️
 
 Tættere på et rigtigt skirmish-match:

@@ -11,6 +11,7 @@ import {
   FACTORY_HEAL_RATE,
   FACTORY_HEAL_RANGE,
   ATTACK_ALARM_COOLDOWN,
+  BUILD_TIME_MULT,
   AI_CONFIGS,
   type Team,
   type UnitKind,
@@ -1064,7 +1065,7 @@ export class Game implements WorldApi, InputHandlers {
       return;
     }
     this.credits["player"] -= cost;
-    b.enqueue(entry.key as UnitKind, def.buildTime);
+    b.enqueue(entry.key as UnitKind, def.buildTime * BUILD_TIME_MULT);
     this.audio.build();
     this.showToast(`Queued ${def.name}`);
   }
