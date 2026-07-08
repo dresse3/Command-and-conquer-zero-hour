@@ -45,6 +45,16 @@ npm run preview
 | **Esc** | Annullér placering / power / fjern markering |
 | **Play Again** (efter sejr/nederlag) | Start en ny kamp med nyt kort og ny modstander |
 
+## Nyt i v1.6 — jetjagere fra hangaren ✈️
+
+Airfield'en er nu også en **flyhangar til jetjagere**:
+
+- **Falcon Jet** — et hurtigt strike-fly du bygger på Airfield'en (tast **F**). I første omgang er der én type jager.
+- **Hangar til 4:** hver Airfield kan huse op til **4 jetjagere** (bygget + i kø). Byg flere airfields for flere jets.
+- **Strafing-angreb:** jetten flyver ind, kredser om målet i våbenrækkevidde og skyder pas efter pas.
+- **Genopladning:** hver jet har **8 skud**; når magasinet er tomt, flyver den automatisk tilbage til nærmeste Airfield og lander for at lade om (ammo-prikker vises over flyet, og "rearming" mens den lader).
+- **Sårbar for jordild:** jets er hurtige men skrøbelige — tårne og enheder kan skyde dem ned, så de skal bruges i hit-and-run-angreb.
+
 ## Nyt i v1.5 — langsommere tempo, større miner & passiv Easy ⏳
 
 Kampene er nu bygget til at kunne vare længe (op mod en time):

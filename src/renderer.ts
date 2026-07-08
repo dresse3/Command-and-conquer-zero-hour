@@ -627,6 +627,61 @@ export class Renderer {
         ctx.restore();
         break;
       }
+      case "jet": {
+        // swept-wing strike fighter, flown high with a ground shadow + afterburner
+        const lift = 16;
+        const rearming = u.state === "rearm";
+        ctx.fillStyle = "rgba(0,0,0,0.2)";
+        ctx.beginPath();
+        ctx.ellipse(u.x + 6, u.y + lift, u.radius * 0.9, u.radius * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(u.x, u.y - lift);
+        ctx.rotate(u.angle);
+        // afterburner flame (dim while rearming/low throttle)
+        ctx.fillStyle = rearming ? "rgba(120,150,200,0.5)" : "rgba(255,170,60,0.85)";
+        ctx.beginPath();
+        ctx.moveTo(-u.radius - 6 - Math.random() * 3, 0);
+        ctx.lineTo(-u.radius, -2.4);
+        ctx.lineTo(-u.radius, 2.4);
+        ctx.closePath();
+        ctx.fill();
+        // swept delta wings
+        ctx.fillStyle = dark;
+        ctx.beginPath();
+        ctx.moveTo(-u.radius * 0.2, 0);
+        ctx.lineTo(-u.radius * 0.9, -u.radius);
+        ctx.lineTo(-u.radius * 0.2, -u.radius * 0.2);
+        ctx.lineTo(-u.radius * 0.2, u.radius * 0.2);
+        ctx.lineTo(-u.radius * 0.9, u.radius);
+        ctx.closePath();
+        ctx.fill();
+        // fuselage (nose forward)
+        ctx.fillStyle = main;
+        ctx.beginPath();
+        ctx.moveTo(u.radius + 3, 0);
+        ctx.lineTo(-u.radius, -u.radius * 0.42);
+        ctx.lineTo(-u.radius, u.radius * 0.42);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#cdd6e4";
+        ctx.fillRect(u.radius * 0.1, -1.6, u.radius * 0.5, 3.2); // canopy
+        ctx.restore();
+        // ammo pips + rearm marker above the jet
+        const pipY = u.y - lift - u.radius - 6;
+        for (let i = 0; i < u.maxAmmo; i++) {
+          ctx.fillStyle = i < u.ammo ? "#7dd3fc" : "rgba(120,130,145,0.5)";
+          ctx.fillRect(u.x - u.maxAmmo * 2 + i * 4, pipY, 3, 3);
+        }
+        if (rearming) {
+          ctx.fillStyle = "#facc15";
+          ctx.font = "9px system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("rearming", u.x, pipY - 5);
+          ctx.textAlign = "left";
+        }
+        break;
+      }
       case "harvester": {
         ctx.save();
         ctx.translate(u.x, u.y);

@@ -22,6 +22,7 @@ export interface WorldApi {
   findNearestEnemy(x: number, y: number, team: Team, withinSight: number): Unit | Building | null;
   findNearestSupply(x: number, y: number): SupplyField | null;
   nearestDropOff(x: number, y: number, team: Team): Building | null;
+  nearestRearm(x: number, y: number, team: Team): Building | null; // friendly Airfield
   addCredits(team: Team, amount: number): void;
   damageArea(x: number, y: number, radius: number, amount: number, casterTeam: Team): void;
   spawnUnitAt(team: Team, kind: import("./config").UnitKind, x: number, y: number): void;

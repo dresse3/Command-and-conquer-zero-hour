@@ -14,6 +14,7 @@ export type UnitKind =
   | "artillery"
   | "harvester"
   | "chinook"
+  | "jet"
   | "marksman"
   | "overlord"
   | "technical";
@@ -36,6 +37,8 @@ export interface UnitDef {
   gatherAmount?: number; // credits carried per trip (defaults to GATHER_AMOUNT)
   canBuild?: boolean; // can construct/repair structures (the harvester/dozer)
   flying?: boolean; // ignores terrain & unit collision (aircraft)
+  ammo?: number; // shots before it must return to an Airfield to rearm (jets)
+  rearmTime?: number; // seconds to fully rearm while docked
 }
 
 export const UNITS: Record<UnitKind, UnitDef> = {
@@ -131,6 +134,24 @@ export const UNITS: Record<UnitKind, UnitDef> = {
     canGather: true, // flies supplies in — faster, ignores terrain
     gatherAmount: 340, // hauls far more per trip than a ground harvester
     flying: true,
+  },
+  jet: {
+    kind: "jet",
+    name: "Falcon Jet",
+    cost: 1200,
+    buildTime: 14,
+    maxHp: 220,
+    speed: 220, // very fast strike aircraft
+    radius: 13,
+    sight: 380,
+    range: 210,
+    damage: 55,
+    fireRate: 3, // rapid strafing cannon
+    splash: 18,
+    canGather: false,
+    flying: true,
+    ammo: 8, // eight passes, then it must land at an Airfield to rearm
+    rearmTime: 8,
   },
   // ---- faction signature units ----
   marksman: {
@@ -351,7 +372,11 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     range: 0,
     damage: 0,
     fireRate: 0,
-    produces: [{ type: "unit", key: "chinook", hotkey: "C" }],
+    // an air hangar: builds supply choppers and houses up to 4 jet fighters
+    produces: [
+      { type: "unit", key: "chinook", hotkey: "C" },
+      { type: "unit", key: "jet", hotkey: "F" },
+    ],
   },
   turret: {
     kind: "turret",
@@ -384,6 +409,9 @@ export const BUILD_RADIUS = TILE * 7; // how far from own buildings you may plac
 // Global build-time multiplier — production and construction are slow so
 // amassing an army and cracking a base takes real time (longer matches).
 export const BUILD_TIME_MULT = 2.2;
+
+// Each Airfield is a hangar for up to this many jet fighters.
+export const JET_CAP_PER_AIRFIELD = 4;
 
 // Repair & healing
 export const HARVESTER_REPAIR_RATE = 90; // building HP/sec a harvester restores
