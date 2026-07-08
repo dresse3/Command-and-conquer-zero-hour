@@ -45,6 +45,16 @@ npm run preview
 | **Esc** | Annullér placering / power / fjern markering |
 | **Play Again** (efter sejr/nederlag) | Start en ny kamp med nyt kort og ny modstander |
 
+## Nyt i v1.9 — levende, mere realistisk ørken 🌵
+
+Slagmarken er fyldt med liv og ser mindre tegneserie-agtig ud:
+
+- **Scenery-objekter:** buske, ørkentræer (akacie), kaktusser, græstotter, tumbleweeds og spredte sten er strøet ud over terrænet — hver med en blød skygge for dybde.
+- **Fugle** flyver hen over kortet med baskende vinger og små skygger på jorden.
+- **Organiske klipper:** klippefelterne tegnes nu som naturlige stenmasser (varierede sten i forskellige størrelser og forskudte positioner) i stedet for et gitter af ens "æg".
+- **Blødere terræn:** de store brune "klatter" er dæmpet, og der er tilføjet fin sandkorn-tekstur, så sandet ser mere naturligt ud.
+- **Ydelses-venligt:** scenery cull'es til synsfeltet og forenkles når man zoomer langt ud, så det kører glat (60 FPS ved normal zoom) — også på iPad.
+
 ## Nyt i v1.8 — landingsbane på hangaren 🛫
 
 Airfield'en har nu en rigtig **landingsbane**, og jetjagerne bruger den som i det originale spil:

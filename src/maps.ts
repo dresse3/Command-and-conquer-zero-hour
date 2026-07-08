@@ -1,4 +1,5 @@
 import type { Grid } from "./grid";
+import { TILE } from "./config";
 
 // An original, hand-designed skirmish map — a symmetric desert battlefield with
 // a wrecked crater at its heart, four corner base sites and open lanes weaving
@@ -16,9 +17,19 @@ export interface StartSpot {
   dirY: 1 | -1;
 }
 
+export type PropKind = "grass" | "bush" | "rock" | "cactus" | "tree" | "deadbush";
+export interface Prop {
+  kind: PropKind;
+  x: number; // world px
+  y: number;
+  r: number; // size scale
+  seed: number; // per-prop variation
+}
+
 export interface MapLayout {
   starts: StartSpot[]; // four corner base sites
   supplies: { tx: number; ty: number }[];
+  scenery: Prop[]; // decorative bushes / trees / rocks / birds seed
 }
 
 export function buildCrashSite(grid: Grid): MapLayout {
@@ -151,5 +162,36 @@ export function buildCrashSite(grid: Grid): MapLayout {
   supplies.push({ tx: Math.round(cx - 8), ty: Math.round(cy + 3) });
   supplies.push({ tx: Math.round(cx + 6), ty: Math.round(cy - 5) });
 
-  return { starts, supplies };
+  // --- Decorative scenery: bushes, trees, cacti, rocks and grass scattered
+  //     across passable ground for a lived-in desert. Purely visual; placement
+  //     is deterministic so it never flickers. ---
+  const scenery: Prop[] = [];
+  for (let ty = 2; ty < H - 2; ty++) {
+    for (let tx = 2; tx < W - 2; tx++) {
+      if (grid.isBlocked(tx, ty)) continue; // not on boulders
+      const n = noise(tx * 13 + 91, ty * 7 + 17);
+      if (n < 0.855) continue; // ~14% of open tiles carry a prop (iPad-friendly)
+      // greener, denser near the map's low-lying middle band; barer at the edges
+      const veg = 1 - Math.min(1, (Math.abs(tx - cx) + Math.abs(ty - cy)) / (W * 0.7));
+      const k = noise(tx * 5 + 3, ty * 11 + 5);
+      let kind: PropKind;
+      if (k < 0.34 + veg * 0.12) kind = "grass";
+      else if (k < 0.6 + veg * 0.1) kind = "bush";
+      else if (k < 0.8) kind = "rock";
+      else if (k < 0.9) kind = "deadbush";
+      else if (k < 0.965) kind = "cactus";
+      else kind = "tree";
+      const jx = noise(tx * 2 + 1, ty * 9);
+      const jy = noise(tx * 9, ty * 2 + 1);
+      scenery.push({
+        kind,
+        x: (tx + 0.2 + jx * 0.6) * TILE,
+        y: (ty + 0.2 + jy * 0.6) * TILE,
+        r: 0.75 + noise(tx * 3, ty * 3) * 0.7,
+        seed: Math.floor(k * 997) ^ (tx * 31 + ty),
+      });
+    }
+  }
+
+  return { starts, supplies, scenery };
 }

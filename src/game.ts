@@ -48,7 +48,7 @@ import {
   type UpgradeKind,
 } from "./config";
 import { hudHitTest, isInHud, isInMinimap, minimapToWorld, powerHitTest, isInSellButton } from "./hud";
-import { buildCrashSite, type StartSpot } from "./maps";
+import { buildCrashSite, type StartSpot, type Prop } from "./maps";
 import type { Vec, WorldApi } from "./types";
 import { dist2 } from "./types";
 
@@ -60,6 +60,7 @@ export class Game implements WorldApi, InputHandlers {
   units: Unit[] = [];
   buildings: Building[] = [];
   supplyFields: SupplyField[] = [];
+  scenery: Prop[] = []; // decorative props (bushes, trees, rocks…)
   projectiles: Projectile[] = [];
   effects = new ParticleSystem();
   audio = new Sfx();
@@ -138,6 +139,7 @@ export class Game implements WorldApi, InputHandlers {
     this.units = [];
     this.buildings = [];
     this.supplyFields = [];
+    this.scenery = [];
     this.projectiles = [];
     this.effects = new ParticleSystem();
     this.credits = { player: START_CREDITS, enemy: START_CREDITS };
@@ -228,6 +230,7 @@ export class Game implements WorldApi, InputHandlers {
     // Stamp the designed "Crash Site" terrain (rocks, dirt) and read back the
     // four corner start sites + supply fields.
     const layout = buildCrashSite(this.grid);
+    this.scenery = layout.scenery;
 
     // Pick two of the four corners at random for the player and the AI, so the
     // enemy could be in any direction — fog of war makes scouting matter.
