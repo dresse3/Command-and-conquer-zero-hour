@@ -354,7 +354,8 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     range: 0,
     damage: 0,
     fireRate: 0,
-    produces: [],
+    // the Supply Depot builds the cargo helicopter that flies in credits
+    produces: [{ type: "unit", key: "chinook", hotkey: "C" }],
   },
   airfield: {
     kind: "airfield",
@@ -367,16 +368,13 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     powerProvided: 0,
     powerUsed: 40,
     needsPower: true,
-    isDropoff: true, // choppers drop supplies here too
+    isDropoff: false,
     prereq: "factory", // top tier — needs a War Factory
     range: 0,
     damage: 0,
     fireRate: 0,
-    // an air hangar: builds supply choppers and houses up to 4 jet fighters
-    produces: [
-      { type: "unit", key: "chinook", hotkey: "C" },
-      { type: "unit", key: "jet", hotkey: "F" },
-    ],
+    // a fighter hangar: houses up to 4 jets that launch, strike and land to rearm
+    produces: [{ type: "unit", key: "jet", hotkey: "F" }],
   },
   turret: {
     kind: "turret",

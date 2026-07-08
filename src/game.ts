@@ -1222,6 +1222,8 @@ export class Game implements WorldApi, InputHandlers {
           const f = this.findNearestSupply(u.x, u.y);
           if (f) u.gather(this, f);
           else u.moveTo(this, b.rally.x, b.rally.y, false);
+        } else if (u.isFighter) {
+          // jets stay idle so they taxi onto the hangar pad and wait for orders
         } else {
           u.moveTo(this, b.rally.x, b.rally.y, b.team === "enemy");
         }

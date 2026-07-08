@@ -45,6 +45,16 @@ npm run preview
 | **Esc** | Annullér placering / power / fjern markering |
 | **Play Again** (efter sejr/nederlag) | Start en ny kamp med nyt kort og ny modstander |
 
+## Nyt i v1.7 — rigtige hangar-baserede jetjagere ✈️
+
+Luftsystemet fungerer nu som i det originale spil:
+
+- **Fragthelikopteren bygges på Supply Depot** (ikke længere på Airfield'en). Airfield'en er nu **rent en jager-hangar**.
+- **Jets holder parkeret i hangaren.** Op til 4 jetjagere står på Airfield'ens pladser og venter.
+- **De letter kun på ordre.** Send dem et sted hen eller sæt dem til at angribe et mål, og de scrambler fra hangaren.
+- **De vender selv hjem og lander.** Når de har udført ordren — fløjet et sted hen eller tømt magasinet på et mål — flyver de tilbage til hangaren, **lander og loader ammunition** (8 skud). Så letter de igen på næste ordre.
+- Parkerede jets tegnes lavt på pladen uden efterbrænder; luftbårne jets har efterbrænder, skygge og ammo-prikker.
+
 ## Nyt i v1.6 — jetjagere fra hangaren ✈️
 
 Airfield'en er nu også en **flyhangar til jetjagere**:

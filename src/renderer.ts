@@ -628,24 +628,27 @@ export class Renderer {
         break;
       }
       case "jet": {
-        // swept-wing strike fighter, flown high with a ground shadow + afterburner
-        const lift = 16;
-        const rearming = u.state === "rearm";
+        // swept-wing strike fighter — parked low on the pad, or flown high with
+        // a ground shadow + afterburner when airborne
+        const lift = u.landed ? 1 : 16;
+        const rearming = u.landed && u.ammo < u.maxAmmo;
         ctx.fillStyle = "rgba(0,0,0,0.2)";
         ctx.beginPath();
-        ctx.ellipse(u.x + 6, u.y + lift, u.radius * 0.9, u.radius * 0.4, 0, 0, Math.PI * 2);
+        ctx.ellipse(u.x + (u.landed ? 1 : 6), u.y + lift, u.radius * 0.9, u.radius * 0.4, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.save();
         ctx.translate(u.x, u.y - lift);
         ctx.rotate(u.angle);
-        // afterburner flame (dim while rearming/low throttle)
-        ctx.fillStyle = rearming ? "rgba(120,150,200,0.5)" : "rgba(255,170,60,0.85)";
-        ctx.beginPath();
-        ctx.moveTo(-u.radius - 6 - Math.random() * 3, 0);
-        ctx.lineTo(-u.radius, -2.4);
-        ctx.lineTo(-u.radius, 2.4);
-        ctx.closePath();
-        ctx.fill();
+        // afterburner flame only when airborne
+        if (!u.landed) {
+          ctx.fillStyle = "rgba(255,170,60,0.85)";
+          ctx.beginPath();
+          ctx.moveTo(-u.radius - 6 - Math.random() * 3, 0);
+          ctx.lineTo(-u.radius, -2.4);
+          ctx.lineTo(-u.radius, 2.4);
+          ctx.closePath();
+          ctx.fill();
+        }
         // swept delta wings
         ctx.fillStyle = dark;
         ctx.beginPath();
