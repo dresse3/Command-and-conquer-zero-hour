@@ -1,6 +1,6 @@
 import { TILE, COLORS, UNITS, BUILDINGS, POWERS, POWER_POINT_COST, SELL_REFUND, UPGRADES, AI_CONFIGS, type BuildEntry } from "./config";
 import type { Game } from "./game";
-import { Unit, Building } from "./entities";
+import { Unit, Building, runwayGeom } from "./entities";
 import { buttonRects, powerButtonRects, sellButtonRect, topRowY, HUD_HEIGHT, minimapRect, worldToMinimap } from "./hud";
 
 export class Renderer {
@@ -38,6 +38,7 @@ export class Renderer {
 
     this.drawTerrain(game);
     this.drawSupply(game);
+    this.drawRunways(game);
     this.drawFog(game);
     if (game.selectedBuilding) this.drawRally(game.selectedBuilding);
     for (const b of game.buildings) {
@@ -198,6 +199,46 @@ export class Renderer {
       ctx.beginPath();
       this.diamond(ctx, f.x, f.y, r * 0.4);
       ctx.fill();
+    }
+  }
+
+  // Tarmac runway strips extending from each Airfield.
+  private drawRunways(game: Game) {
+    const ctx = this.ctx;
+    for (const b of game.buildings) {
+      if (!b.alive || b.kind !== "airfield" || b.constructing) continue;
+      if (b.team === "enemy" && !game.fog.isExploredWorld(b.x, b.y)) continue;
+      const rw = runwayGeom(b);
+      const hw = 15; // half-width of the strip
+      ctx.save();
+      ctx.translate(rw.thrX, rw.thrY);
+      ctx.rotate(Math.atan2(rw.endY - rw.thrY, rw.endX - rw.thrX));
+      const len = Math.hypot(rw.endX - rw.thrX, rw.endY - rw.thrY);
+      // asphalt
+      ctx.fillStyle = "#20242c";
+      ctx.fillRect(-6, -hw, len + 12, hw * 2);
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.fillRect(-6, -hw, len + 12, 3);
+      ctx.fillRect(-6, hw - 3, len + 12, 3);
+      // dashed centreline
+      ctx.strokeStyle = "rgba(230,220,180,0.5)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([12, 10]);
+      ctx.beginPath();
+      ctx.moveTo(4, 0);
+      ctx.lineTo(len - 4, 0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // threshold bars at the far (take-off / touchdown) end
+      ctx.strokeStyle = "rgba(230,220,180,0.55)";
+      ctx.lineWidth = 2;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(len - 12, i * 5);
+        ctx.lineTo(len - 2, i * 5);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
   }
 
@@ -628,19 +669,19 @@ export class Renderer {
         break;
       }
       case "jet": {
-        // swept-wing strike fighter — parked low on the pad, or flown high with
-        // a ground shadow + afterburner when airborne
-        const lift = u.landed ? 1 : 16;
-        const rearming = u.landed && u.ammo < u.maxAmmo;
+        // swept-wing strike fighter — height scales with altitude so it rises
+        // off the runway on take-off and settles back down on landing
+        const lift = 1 + u.altitude * 15;
+        const rearming = u.airPhase === "parked" && u.ammo < u.maxAmmo;
         ctx.fillStyle = "rgba(0,0,0,0.2)";
         ctx.beginPath();
-        ctx.ellipse(u.x + (u.landed ? 1 : 6), u.y + lift, u.radius * 0.9, u.radius * 0.4, 0, 0, Math.PI * 2);
+        ctx.ellipse(u.x + 1 + u.altitude * 5, u.y + lift, u.radius * 0.9, u.radius * 0.4, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.save();
         ctx.translate(u.x, u.y - lift);
         ctx.rotate(u.angle);
-        // afterburner flame only when airborne
-        if (!u.landed) {
+        // afterburner flame while under power (taking off / airborne)
+        if (u.altitude > 0.25) {
           ctx.fillStyle = "rgba(255,170,60,0.85)";
           ctx.beginPath();
           ctx.moveTo(-u.radius - 6 - Math.random() * 3, 0);

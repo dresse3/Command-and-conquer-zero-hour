@@ -305,6 +305,8 @@ export class Game implements WorldApi, InputHandlers {
 
   private placeStructure(team: Team, kind: BuildingKind, tx: number, ty: number): Building {
     const b = new Building(team, kind, tx, ty);
+    // orient an airfield's runway toward the open middle of the map
+    if (kind === "airfield") b.runwayDir = b.x < (MAP_W * TILE) / 2 ? 1 : -1;
     this.buildings.push(b);
     this.blockTiles(b);
     return b;
@@ -1223,7 +1225,9 @@ export class Game implements WorldApi, InputHandlers {
           if (f) u.gather(this, f);
           else u.moveTo(this, b.rally.x, b.rally.y, false);
         } else if (u.isFighter) {
-          // jets stay idle so they taxi onto the hangar pad and wait for orders
+          // a fresh jet flies in and lands on the runway, then taxis to its pad
+          u.airPhase = "approach";
+          u.altitude = 1;
         } else {
           u.moveTo(this, b.rally.x, b.rally.y, b.team === "enemy");
         }
