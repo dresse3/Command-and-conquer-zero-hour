@@ -1,4 +1,4 @@
-import { UNITS, POWER_POINT_COST, type UnitKind } from "./config";
+import { UNITS, POWER_POINT_COST, BUILD_TIME_MULT, type UnitKind } from "./config";
 import type { Building, Unit } from "./entities";
 import type { Game } from "./game";
 
@@ -143,7 +143,7 @@ export class EnemyAI {
     const cost = this.game.unitCost(kind, "enemy");
     if (credits < cost) return;
     this.game.credits["enemy"] -= cost;
-    b.enqueue(kind, def.buildTime);
+    b.enqueue(kind, def.buildTime * BUILD_TIME_MULT);
   }
 
   guard(newUnit: Unit) {
