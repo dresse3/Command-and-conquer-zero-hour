@@ -1,6 +1,6 @@
 {
   "name": "zero-hour-rts",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Original real-time strategy engine inspired by Command & Conquer: Zero Hour. Runs on Windows and macOS via the browser.",
   "type": "module",
   "scripts": {

@@ -49,6 +49,7 @@ export class Unit {
   turretAngle = 0; // weapon facing
   muzzle = 0; // >0 for a few frames after firing (draws a muzzle flash)
   ammo = 0; // remaining shots for aircraft with an ammo count (jets)
+  landed = false; // fighter parked on its hangar pad
 
   state: UnitState = "idle";
   path: Vec[] = [];
@@ -97,6 +98,12 @@ export class Unit {
     return this.def.ammo ?? 0;
   }
 
+  // A hangar-based attack aircraft (jet): parks on its Airfield and launches on
+  // command, unlike the free-flying cargo chopper.
+  get isFighter() {
+    return !!this.def.flying && this.maxAmmo > 0;
+  }
+
   get maxHp() {
     return this.def.maxHp * VET_HP[this.rank] * this.hpMult;
   }
@@ -133,6 +140,7 @@ export class Unit {
     this.state = attackMove ? "attack-move" : "moving";
     this.goal = { x: wx, y: wy };
     this.stuckTime = 0;
+    this.landed = false; // launch from the hangar
     this.computePath(world, wx, wy);
   }
 
@@ -140,6 +148,7 @@ export class Unit {
     this.target = target;
     this.state = "attacking";
     this.path = [];
+    this.landed = false; // scramble to intercept
   }
 
   gather(world: WorldApi, field: SupplyField) {
@@ -203,7 +212,9 @@ export class Unit {
 
     switch (this.state) {
       case "idle":
-        this.autoAcquire(world);
+        // fighters return to their hangar and land instead of loitering
+        if (this.isFighter) this.flyHomeAndLand(dt, world);
+        else this.autoAcquire(world);
         break;
       case "moving":
         this.followPath(dt, world);
@@ -228,7 +239,8 @@ export class Unit {
         this.doRepair(dt, world);
         break;
       case "rearm":
-        this.doRearm(dt, world);
+        if (this.isFighter) this.flyHomeAndLand(dt, world);
+        else this.doRearm(dt, world);
         break;
     }
 
@@ -237,6 +249,7 @@ export class Unit {
 
   private autoAcquire(world: WorldApi): boolean {
     if (this.def.damage <= 0) return false;
+    if (this.isFighter) return false; // jets wait in the hangar until ordered out
     const enemy = world.findNearestEnemy(this.x, this.y, this.team, this.def.sight);
     if (enemy) {
       this.target = enemy;
@@ -319,25 +332,59 @@ export class Unit {
     }
   }
 
-  // Fly back to the nearest friendly Airfield and reload; then return to duty.
+  // Legacy cargo-aircraft rearm (unused by hangar fighters) — kept for any
+  // non-fighter that might need to reload in place.
   private doRearm(dt: number, world: WorldApi) {
     if (this.ammo >= this.maxAmmo) {
       this.state = "idle";
       return;
     }
+    this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / ((this.def.rearmTime ?? 8) * 3)) * dt);
+    void world;
+  }
+
+  // A parking slot around the airfield so up to four jets don't stack.
+  private padSlot(pad: Building): Vec {
+    const i = this.id % 4;
+    const ox = (i % 2 === 0 ? -1 : 1) * pad.def.tilesW * TILE * 0.26;
+    const oy = (i < 2 ? -1 : 1) * pad.def.tilesH * TILE * 0.26;
+    return { x: pad.x + ox, y: pad.y + oy };
+  }
+
+  // Fly back to the home hangar, land on a pad and reload ammo. Used whenever a
+  // fighter is idle or has finished its order — it never loiters in the air.
+  private flyHomeAndLand(dt: number, world: WorldApi) {
     const pad = world.nearestRearm(this.x, this.y, this.team);
     if (!pad) {
-      // no hangar left — slowly self-rearm in the field so it isn't useless
+      // no hangar left — drift and slowly self-rearm so it isn't useless
+      this.landed = false;
       this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / ((this.def.rearmTime ?? 8) * 3)) * dt);
       return;
     }
-    if (dist(this, pad) > pad.radius + this.radius + 4) {
-      this.path = [{ x: pad.x, y: pad.y }]; // flying: straight line
-      this.stepAlongPath(dt, world);
+    const slot = this.padSlot(pad);
+    const dx = slot.x - this.x;
+    const dy = slot.y - this.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 5) {
+      this.landed = false;
+      const step = this.speed * dt;
+      if (d <= step) {
+        this.x = slot.x;
+        this.y = slot.y;
+      } else {
+        this.x += (dx / d) * step;
+        this.y += (dy / d) * step;
+        this.angle = Math.atan2(dy, dx);
+      }
       return;
     }
-    // docked over the hangar: rearm
-    this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / (this.def.rearmTime ?? 8)) * dt);
+    // landed on the pad — sit and reload
+    this.landed = true;
+    this.x = slot.x;
+    this.y = slot.y;
+    if (this.ammo < this.maxAmmo) {
+      this.ammo = Math.min(this.maxAmmo, this.ammo + (this.maxAmmo / (this.def.rearmTime ?? 8)) * dt);
+    }
   }
 
   private doGather(dt: number, world: WorldApi) {
